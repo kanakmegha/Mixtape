@@ -1,0 +1,47 @@
+# Android
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+*.apks
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Java/Android signing
+*.jks
+*.keystore
+*.p12
+
+# Backend
+*.log
+/tmp/
+bin/
+
+# Databases/local state
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+redis-data/
+
+# Downloaded media
+*.mp3
+*.wav
+*.m4a
+*.aac
+*.flac
+*.ogg
