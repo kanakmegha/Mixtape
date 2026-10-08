@@ -19,9 +19,12 @@ import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 
+import androidx.compose.material.icons.automirrored.filled.FeaturedPlayList
+
 sealed class NavigationItem(val route: String, val icon: ImageVector, val title: String) {
     object Home : NavigationItem("home", Icons.Default.Home, "Home")
     object Library : NavigationItem("library", Icons.Default.LibraryMusic, "Library")
+    object Playlists : NavigationItem("playlists", Icons.AutoMirrored.Filled.FeaturedPlayList, "Playlists")
     object Import : NavigationItem("import", Icons.Default.Download, "Import")
     object Settings : NavigationItem("settings", Icons.Default.Settings, "Settings")
 }
@@ -31,6 +34,7 @@ fun BottomNavigationBar(navController: NavController) {
     val items = listOf(
         NavigationItem.Home,
         NavigationItem.Library,
+        NavigationItem.Playlists,
         NavigationItem.Import,
         NavigationItem.Settings
     )

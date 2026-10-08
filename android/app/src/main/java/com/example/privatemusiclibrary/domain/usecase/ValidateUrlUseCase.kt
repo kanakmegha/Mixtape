@@ -35,7 +35,7 @@ class ValidateUrlUseCase @Inject constructor(
 
         val supported = extractors.any { it.supports(url) }
         if (!supported) {
-            return ValidationResult.Invalid("Only supported URLs and content you are authorized to save can be imported. Supported types: Direct audio links (.mp3, .wav, etc)")
+            return ValidationResult.Invalid("This source isn't supported yet.")
         }
 
         return ValidationResult.Valid

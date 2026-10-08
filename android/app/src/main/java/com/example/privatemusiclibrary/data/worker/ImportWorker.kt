@@ -24,7 +24,7 @@ class ImportWorker @AssistedInject constructor(
     private val importJobRepository: ImportJobRepository,
     private val extractors: Set<@JvmSuppressWildcards AudioExtractor>,
     private val localAudioStorage: LocalAudioStorage,
-    private val scanLocalAudioUseCase: ScanLocalAudioUseCase
+    private val trackRepository: com.example.privatemusiclibrary.domain.repository.TrackRepository
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -41,57 +41,94 @@ class ImportWorker @AssistedInject constructor(
             
             val extractor = extractors.find { it.supports(job.sourceUrl) }
             if (extractor == null) {
-                updateStatus(jobId, ImportJobStatus.FAILED, 0, "No supported extractor found for this URL")
+                updateStatus(jobId, ImportJobStatus.FAILED, 0, "This source isn't supported yet.")
                 return@withContext Result.failure()
             }
             
             updateStatus(jobId, ImportJobStatus.DOWNLOADING, 10)
             
-            val tempFile = File(context.cacheDir, "import_${UUID.randomUUID()}.audio")
-            
-            try {
-                extractor.extract(job.sourceUrl, tempFile) { progress ->
-                    // Map 0-100 to 10-80
-                    if (progress >= 0 && !isStopped) {
-                        val scaledProgress = 10 + (progress * 0.7).toInt()
-                        // Launch fire-and-forget or just update DB
-                        // Be careful not to overwhelm DB with progress updates, but ok for now
-                        kotlinx.coroutines.runBlocking {
-                            updateStatus(jobId, ImportJobStatus.DOWNLOADING, scaledProgress)
-                        }
+            val extractedMedia = extractor.extract(job.sourceUrl, context.cacheDir) { progress ->
+                if (progress >= 0 && !isStopped) {
+                    val scaledProgress = 10 + (progress * 0.7).toInt()
+                    kotlinx.coroutines.runBlocking {
+                        updateStatus(jobId, ImportJobStatus.DOWNLOADING, scaledProgress)
                     }
                 }
-                
-                if (isStopped) {
-                    updateStatus(jobId, ImportJobStatus.CANCELLED, 0, "Cancelled by user")
-                    return@withContext Result.failure()
-                }
-                
-                updateStatus(jobId, ImportJobStatus.SAVING, 80)
-                
-                // Save to local storage
-                val filename = generateSafeFilename(job.sourceUrl)
-                val saveResult = localAudioStorage.save(tempFile, filename)
-                
-                if (saveResult !is com.example.privatemusiclibrary.domain.repository.StorageResult.Success) {
-                    updateStatus(jobId, ImportJobStatus.FAILED, 80, "Failed to save file to local storage")
-                    return@withContext Result.failure()
-                }
-                
-                updateStatus(jobId, ImportJobStatus.COMPLETED, 100)
-                
-                // Trigger scanner to register the track in Room so Library picks it up
-                scanLocalAudioUseCase()
-                
-                return@withContext Result.success()
-                
-            } finally {
-                if (tempFile.exists()) {
-                    tempFile.delete()
-                }
             }
+            
+            if (isStopped) {
+                updateStatus(jobId, ImportJobStatus.CANCELLED, 0, "Cancelled by user")
+                if (extractedMedia.file.exists()) extractedMedia.file.delete()
+                return@withContext Result.failure()
+            }
+
+            // Check for duplicates
+            val existingTracks = trackRepository.getAllTracks()
+            val isDuplicate = extractedMedia.sourceId != null && existingTracks.any { 
+                it.sourceId == extractedMedia.sourceId && it.sourcePlatform == extractedMedia.platform 
+            }
+
+            if (isDuplicate) {
+                updateStatus(jobId, ImportJobStatus.FAILED, 100, "This track is already in your library.")
+                if (extractedMedia.file.exists()) extractedMedia.file.delete()
+                return@withContext Result.failure()
+            }
+            
+            updateStatus(jobId, ImportJobStatus.SAVING, 80)
+            
+            val filename = generateSafeFilename(extractedMedia)
+            val saveResult = localAudioStorage.save(extractedMedia.file, filename)
+            
+            if (saveResult !is com.example.privatemusiclibrary.domain.repository.StorageResult.Success) {
+                updateStatus(jobId, ImportJobStatus.FAILED, 80, "Your music storage location is unavailable.")
+                if (extractedMedia.file.exists()) extractedMedia.file.delete()
+                return@withContext Result.failure()
+            }
+
+            // Create Track directly
+            val track = com.example.privatemusiclibrary.domain.model.Track(
+                id = java.util.UUID.randomUUID().toString(),
+                title = extractedMedia.title,
+                artist = extractedMedia.artist,
+                creator = extractedMedia.artist,
+                album = null,
+                thumbnailUri = extractedMedia.artworkUrl,
+                sourceUrl = extractedMedia.sourceUrl,
+                sourcePlatform = extractedMedia.platform,
+                sourceId = extractedMedia.sourceId,
+                localUri = saveResult.uri,
+                mimeType = "audio/mpeg",
+                durationMs = null,
+                fileSizeBytes = localAudioStorage.size(saveResult.uri),
+                dateAdded = System.currentTimeMillis(),
+                lastPlayedAt = null,
+                playbackPositionMs = 0L,
+                isFavorite = false,
+                folderId = null,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            
+            trackRepository.insert(track)
+            
+            updateStatus(jobId, ImportJobStatus.COMPLETED, 100)
+            
+            if (extractedMedia.file.exists()) {
+                extractedMedia.file.delete()
+            }
+            
+            return@withContext Result.success()
+            
         } catch (e: Exception) {
-            val error = e.message ?: "Unknown error occurred during extraction"
+            val rawMessage = e.message?.lowercase() ?: ""
+            val error = when {
+                rawMessage.contains("unsupported") -> "This source isn't supported yet."
+                rawMessage.contains("forbidden") || rawMessage.contains("403") || rawMessage.contains("unauthorized") || rawMessage.contains("sign in") || rawMessage.contains("login") -> "This content isn't available without access to the source."
+                rawMessage.contains("network") || rawMessage.contains("unknownhost") || rawMessage.contains("timeout") || rawMessage.contains("errno 7") -> "Couldn't reach the source. Check your connection and try again."
+                rawMessage.contains("rate-limit") -> "The source is temporarily limiting requests. Try again later."
+                rawMessage.contains("storage") || rawMessage.contains("space") -> "Your music storage location is unavailable."
+                else -> "We couldn't import this media. Try again or use another URL."
+            }
             updateStatus(jobId, ImportJobStatus.FAILED, 0, error)
             return@withContext Result.failure()
         }
@@ -107,9 +144,15 @@ class ImportWorker @AssistedInject constructor(
         ))
     }
     
-    private fun generateSafeFilename(url: String): String {
-        val lastSegment = url.substringAfterLast("/", "imported_audio")
-        val sanitized = lastSegment.replace(Regex("[^a-zA-Z0-9.-]"), "_")
-        return if (sanitized.contains(".")) sanitized else "$sanitized.mp3"
+    private fun generateSafeFilename(media: com.example.privatemusiclibrary.domain.extraction.ExtractedMedia): String {
+        val baseName = if (media.artist != null && media.artist != "Unknown Artist") {
+            "${media.artist} - ${media.title}"
+        } else {
+            media.title
+        }
+        val sanitized = baseName.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        // Enforce max length
+        val truncated = if (sanitized.length > 100) sanitized.substring(0, 100) else sanitized
+        return "$truncated.mp3"
     }
 }

@@ -18,6 +18,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,13 +47,26 @@ class Media3AudioPlayer @Inject constructor(
             controller = controllerFuture?.get()
             controller?.addListener(this)
             updateState()
+            startPositionUpdater()
         }, MoreExecutors.directExecutor())
     }
 
-    override fun play(track: Track) {
-        val mediaItem = track.toMediaItem()
-        queueTracks = listOf(track)
-        controller?.setMediaItem(mediaItem)
+    private fun startPositionUpdater() {
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+            while (true) {
+                if (controller?.isPlaying == true) {
+                    updateState()
+                }
+                kotlinx.coroutines.delay(250)
+            }
+        }
+    }
+
+    override fun playQueue(tracks: List<Track>, startIndex: Int) {
+        if (tracks.isEmpty()) return
+        queueTracks = tracks
+        val mediaItems = tracks.map { it.toMediaItem() }
+        controller?.setMediaItems(mediaItems, startIndex, 0L)
         controller?.prepare()
         controller?.play()
     }
@@ -136,6 +151,14 @@ class Media3AudioPlayer @Inject constructor(
         newPosition: Player.PositionInfo,
         reason: Int
     ) {
+        updateState()
+    }
+
+    override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+        updateState()
+    }
+
+    override fun onRepeatModeChanged(repeatMode: Int) {
         updateState()
     }
 

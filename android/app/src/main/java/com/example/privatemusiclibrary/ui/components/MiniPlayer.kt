@@ -11,6 +11,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -32,7 +33,7 @@ fun MiniPlayer(
             .height(64.dp)
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer
+            containerColor = Color(0xFF2C3258) // Premium dark blue to match PlayerScreen
         )
     ) {
         Row(
@@ -45,24 +46,30 @@ fun MiniPlayer(
                 Text(
                     text = track.title,
                     style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = track.artist ?: "Unknown Artist",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    color = Color(0xFFA0A5C0),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
             
+            // We use a regular IconButton but we must ensure it doesn't pass the click down
+            // In Compose, IconButton consumes the click. But just in case, we can wrap it.
             IconButton(
-                onClick = { if (state.isPlaying) viewModel.pause() else viewModel.resume() }
+                onClick = { 
+                    if (state.isPlaying) viewModel.pause() else viewModel.resume() 
+                }
             ) {
                 Icon(
                     imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (state.isPlaying) "Pause" else "Play"
+                    contentDescription = if (state.isPlaying) "Pause" else "Play",
+                    tint = Color.White
                 )
             }
         }

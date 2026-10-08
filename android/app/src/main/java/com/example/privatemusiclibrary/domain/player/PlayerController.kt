@@ -35,7 +35,7 @@ class PlayerController @Inject constructor(
         }
     }
 
-    fun play(track: Track) = audioPlayer.play(track)
+    fun playQueue(tracks: List<Track>, startIndex: Int) = audioPlayer.playQueue(tracks, startIndex)
     fun pause() = audioPlayer.pause()
     fun resume() = audioPlayer.resume()
     fun seekTo(positionMs: Long) = audioPlayer.seekTo(positionMs)

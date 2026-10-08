@@ -1,0 +1,28 @@
+# Secrets and environment files
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+
+# Git
+.git
+.gitignore
+
+# Temp and logs
+tmp/
+logs/
+*.log
+
+# Build artifacts
+backend/api_server
+backend/main
+backend/api_bin
+**/*.exe
+**/*.o
+**/*.a
+**/*.so
+
+# Android
+android/
+docs/

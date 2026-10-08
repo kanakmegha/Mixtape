@@ -229,8 +229,39 @@ class ValidateUrlUseCaseTest {
         val result = validateUrlUseCase("https://example.com/audio.mp3")
         assertTrue(result is ValidateUrlUseCase.ValidationResult.Invalid)
         assertEquals(
-            "Only supported URLs and content you are authorized to save can be imported. Supported types: Direct audio links (.mp3, .wav, etc)", 
+            "This source isn't supported yet.", 
             (result as ValidateUrlUseCase.ValidationResult.Invalid).reason
         )
+    }
+}
+
+class ExtractorRoutingTest {
+    @Test
+    fun testProviderRouting() {
+        val ytDlpExtractor = com.example.privatemusiclibrary.data.extraction.YtDlpAudioExtractor()
+        val directExtractor = com.example.privatemusiclibrary.data.extraction.DirectAudioUrlExtractor()
+        
+        // YtDlpExtractor supports these media pages
+        assertTrue(ytDlpExtractor.supports("https://www.youtube.com/watch?v=123")) // YouTube watch URL
+        assertTrue(ytDlpExtractor.supports("https://www.youtube.com/shorts/123")) // YouTube short URL
+        assertTrue(ytDlpExtractor.supports("https://www.instagram.com/p/123/")) // Instagram post
+        assertTrue(ytDlpExtractor.supports("https://www.instagram.com/reel/123/")) // Instagram reel
+        assertTrue(ytDlpExtractor.supports("https://www.instagram.com/reels/123/")) // Instagram reels
+        assertTrue(ytDlpExtractor.supports("https://soundcloud.com/123")) // SoundCloud
+        
+        // YtDlpExtractor does NOT support direct mp3 (could be handled by directExtractor)
+        assertFalse(ytDlpExtractor.supports("https://example.com/audio.mp3"))
+        
+        // Direct extractor supports media extensions
+        assertTrue(directExtractor.supports("https://example.com/audio.mp3")) // direct MP3
+        assertTrue(directExtractor.supports("http://example.com/audio.m4a")) // direct M4A
+        
+        // Direct extractor does NOT support media pages
+        assertFalse(directExtractor.supports("https://www.instagram.com/p/123/"))
+        assertFalse(directExtractor.supports("https://www.youtube.com/watch?v=123"))
+        
+        // Unsupported arbitrary URL
+        assertFalse(ytDlpExtractor.supports("https://example.com/page.html"))
+        assertFalse(directExtractor.supports("https://example.com/page.html"))
     }
 }

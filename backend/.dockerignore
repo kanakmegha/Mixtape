@@ -1,0 +1,24 @@
+# Secrets and environment files
+.env
+.env.*
+*.env
+**/.env
+**/.env.*
+
+# Git
+.git
+.gitignore
+
+# Temp and logs
+tmp/
+logs/
+*.log
+
+# Build artifacts
+api_server
+main
+api_bin
+**/*.exe
+**/*.o
+**/*.a
+**/*.so

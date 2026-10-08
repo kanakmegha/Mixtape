@@ -58,11 +58,15 @@ class HomeViewModel @Inject constructor(
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     private val getLibraryTracksUseCase: GetLibraryTracksUseCase,
-    private val scanLocalAudioUseCase: com.example.privatemusiclibrary.domain.usecase.ScanLocalAudioUseCase
+    private val scanLocalAudioUseCase: com.example.privatemusiclibrary.domain.usecase.ScanLocalAudioUseCase,
+    private val fixMetadataUseCase: com.example.privatemusiclibrary.domain.usecase.FixMetadataUseCase
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+    
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
@@ -70,19 +74,39 @@ class LibraryViewModel @Inject constructor(
     init {
         loadTracks()
         scanLibrary()
+        viewModelScope.launch {
+            fixMetadataUseCase()
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
     }
 
     private fun loadTracks() {
         viewModelScope.launch {
-            getLibraryTracksUseCase()
-                .catch { e -> _uiState.value = LibraryUiState.Error(e.message ?: "Unknown error") }
-                .collect { tracks ->
-                    if (tracks.isEmpty()) {
-                        _uiState.value = LibraryUiState.Empty
-                    } else {
-                        _uiState.value = LibraryUiState.Success(tracks)
+            combine(
+                getLibraryTracksUseCase(),
+                _searchQuery
+            ) { tracks, query ->
+                if (query.isBlank()) {
+                    tracks
+                } else {
+                    val q = query.trim().lowercase()
+                    tracks.filter { 
+                        it.title.lowercase().contains(q) || 
+                        (it.artist?.lowercase()?.contains(q) == true)
                     }
                 }
+            }
+            .catch { e -> _uiState.value = LibraryUiState.Error(e.message ?: "Unknown error") }
+            .collect { filteredTracks ->
+                if (filteredTracks.isEmpty()) {
+                    _uiState.value = LibraryUiState.Empty
+                } else {
+                    _uiState.value = LibraryUiState.Success(filteredTracks)
+                }
+            }
         }
     }
     
@@ -150,7 +174,7 @@ data class ImportUiState(
     val urlInput: String = "",
     val isImporting: Boolean = false,
     val error: String? = null,
-    val activeJobs: List<com.example.privatemusiclibrary.domain.model.ImportJob> = emptyList()
+    val currentJob: com.example.privatemusiclibrary.domain.model.ImportJob? = null
 )
 
 @HiltViewModel
@@ -163,6 +187,8 @@ class ImportViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ImportUiState())
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
+    
+    private var currentJobId: String? = null
 
     init {
         viewModelScope.launch {
@@ -177,8 +203,20 @@ class ImportViewModel @Inject constructor(
         
         viewModelScope.launch {
             importJobRepository.observeAll().collect { jobs ->
-                _uiState.update { 
-                    it.copy(activeJobs = jobs)
+                val job = jobs.find { it.id == currentJobId }
+                if (job != null) {
+                    _uiState.update { it.copy(currentJob = job, isImporting = false) }
+                    
+                    if (job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED) {
+                        viewModelScope.launch {
+                            kotlinx.coroutines.delay(3000)
+                            if (currentJobId == job.id) {
+                                clearCurrentJob()
+                            }
+                        }
+                    }
+                } else {
+                    _uiState.update { it.copy(currentJob = null) }
                 }
             }
         }
@@ -202,7 +240,9 @@ class ImportViewModel @Inject constructor(
         viewModelScope.launch {
             val result = importUrlUseCase(url)
             if (result.isSuccess) {
-                _uiState.update { it.copy(isImporting = false, urlInput = "") }
+                currentJobId = result.getOrNull()
+                _uiState.update { it.copy(urlInput = "") }
+                // isImporting will be set to false when the job is actually observed
             } else {
                 _uiState.update { it.copy(isImporting = false, error = result.exceptionOrNull()?.message) }
             }
@@ -212,6 +252,12 @@ class ImportViewModel @Inject constructor(
     fun cancelImport(jobId: String) {
         viewModelScope.launch {
             cancelImportJobUseCase(jobId)
+            clearCurrentJob()
         }
+    }
+    
+    fun clearCurrentJob() {
+        currentJobId = null
+        _uiState.update { it.copy(currentJob = null) }
     }
 }

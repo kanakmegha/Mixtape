@@ -22,7 +22,7 @@ data class PlayerState(
 interface AudioPlayer {
     val playerState: StateFlow<PlayerState>
 
-    fun play(track: Track)
+    fun playQueue(tracks: List<Track>, startIndex: Int)
     fun pause()
     fun resume()
     fun seekTo(positionMs: Long)

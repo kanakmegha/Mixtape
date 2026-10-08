@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-music_library}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
@@ -20,13 +20,13 @@ services:
       dockerfile: Dockerfile
     container_name: music_lib_backend
     ports:
-      - "8080:8080"
+      - "8081:8081"
     environment:
       - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-music_library}?sslmode=disable
       - JWT_SECRET=${JWT_SECRET:-your_jwt_secret_here}
       - JWT_ACCESS_EXPIRY=15m
       - JWT_REFRESH_EXPIRY=7d
-      - SERVER_PORT=8080
+      - SERVER_PORT=8081
       - ENVIRONMENT=development
     depends_on:
       - postgres

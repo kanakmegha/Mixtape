@@ -30,12 +30,17 @@ interface FolderRepository {
 
 interface PlaylistRepository {
     fun observeAll(): Flow<List<Playlist>>
+    fun observeById(id: String): Flow<Playlist?>
+    suspend fun getById(id: String): Playlist?
     suspend fun insert(playlist: Playlist)
     suspend fun update(playlist: Playlist)
     suspend fun delete(playlist: Playlist)
     fun observeTracksForPlaylist(playlistId: String): Flow<List<Track>>
+    fun observePlaylistsForTrack(trackId: String): Flow<List<String>>
+    fun observeTrackCount(playlistId: String): Flow<Int>
     suspend fun addTrackToPlaylist(playlistId: String, trackId: String, position: Int)
     suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
+    suspend fun updateTrackPosition(playlistId: String, trackId: String, position: Int)
 }
 
 interface PlaybackRepository {

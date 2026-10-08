@@ -54,6 +54,8 @@ class DefaultPlaylistRepository @Inject constructor(
     private val playlistTrackDao: PlaylistTrackDao
 ) : PlaylistRepository {
     override fun observeAll(): Flow<List<Playlist>> = playlistDao.observeAll().map { it.map { p -> p.toDomain() } }
+    override fun observeById(id: String): Flow<Playlist?> = playlistDao.observeById(id).map { it?.toDomain() }
+    override suspend fun getById(id: String): Playlist? = playlistDao.getById(id)?.toDomain()
     override suspend fun insert(playlist: Playlist) { playlistDao.insert(playlist.toEntity()) }
     override suspend fun update(playlist: Playlist) { playlistDao.update(playlist.toEntity()) }
     override suspend fun delete(playlist: Playlist) { playlistDao.delete(playlist.toEntity()) }
@@ -62,12 +64,24 @@ class DefaultPlaylistRepository @Inject constructor(
         return playlistTrackDao.observeTracksForPlaylist(playlistId).map { it.map { t -> t.toDomain() } }
     }
     
+    override fun observePlaylistsForTrack(trackId: String): Flow<List<String>> {
+        return playlistTrackDao.observePlaylistsForTrack(trackId)
+    }
+    
+    override fun observeTrackCount(playlistId: String): Flow<Int> {
+        return playlistTrackDao.observeTrackCount(playlistId)
+    }
+
     override suspend fun addTrackToPlaylist(playlistId: String, trackId: String, position: Int) {
         playlistTrackDao.insert(PlaylistTrackEntity(playlistId, trackId, position))
     }
     
     override suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
-        playlistTrackDao.delete(PlaylistTrackEntity(playlistId, trackId, 0)) // Note: position might not be matched in delete depending on PK. PK is playlistId, trackId so it deletes by those.
+        playlistTrackDao.removeTrack(playlistId, trackId)
+    }
+    
+    override suspend fun updateTrackPosition(playlistId: String, trackId: String, position: Int) {
+        playlistTrackDao.updatePosition(playlistId, trackId, position)
     }
 }
 

@@ -22,9 +22,20 @@ class DirectAudioUrlExtractor @Inject constructor() : AudioExtractor {
                  lowerUrl.endsWith(".flac"))
     }
 
-    override suspend fun extract(url: String, outputDestination: File, progressCallback: (Int) -> Unit) {
-        withContext(Dispatchers.IO) {
+    override suspend fun extract(
+        url: String, 
+        outputDir: File, 
+        progressCallback: (Int) -> Unit
+    ): com.example.privatemusiclibrary.domain.extraction.ExtractedMedia {
+        return withContext(Dispatchers.IO) {
             var connection: HttpURLConnection? = null
+            
+            val filenameFromUrl = url.substringAfterLast("/").substringBefore("?")
+            val title = if (filenameFromUrl.isNotBlank()) filenameFromUrl.substringBeforeLast(".") else "Direct Audio"
+            val ext = if (filenameFromUrl.contains(".")) filenameFromUrl.substringAfterLast(".") else "mp3"
+            
+            val tempFile = File(outputDir, "import_${java.util.UUID.randomUUID()}.$ext")
+            
             try {
                 connection = URL(url).openConnection() as HttpURLConnection
                 connection.requestMethod = "GET"
@@ -38,7 +49,7 @@ class DirectAudioUrlExtractor @Inject constructor() : AudioExtractor {
                 val fileLength = connection.contentLength
                 
                 connection.inputStream.use { input ->
-                    FileOutputStream(outputDestination).use { output ->
+                    FileOutputStream(tempFile).use { output ->
                         val data = ByteArray(8192)
                         var total: Long = 0
                         var count: Int
@@ -56,6 +67,16 @@ class DirectAudioUrlExtractor @Inject constructor() : AudioExtractor {
                         }
                     }
                 }
+                
+                com.example.privatemusiclibrary.domain.extraction.ExtractedMedia(
+                    sourceUrl = url,
+                    sourceId = null,
+                    platform = "Direct",
+                    title = title.replace("_", " ").trim(),
+                    artist = "Unknown Artist",
+                    artworkUrl = null,
+                    file = tempFile
+                )
             } finally {
                 connection?.disconnect()
             }

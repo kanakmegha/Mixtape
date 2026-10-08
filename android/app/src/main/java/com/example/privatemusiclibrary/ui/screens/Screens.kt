@@ -9,16 +9,19 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.privatemusiclibrary.domain.model.Track
@@ -42,14 +45,16 @@ fun RegisterScreen() {
 fun HomeScreen(
     onNavigateToLibrary: () -> Unit,
     onNavigateToImport: () -> Unit,
-    viewModel: HomeViewModel = hiltViewModel()
+    onNavigateToPlayer: () -> Unit = {},
+    viewModel: HomeViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Private Music Library") }
+                title = { Text("Mixtape") }
             )
         }
     ) { innerPadding ->
@@ -112,7 +117,23 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             items(state.recentlyPlayed) { track ->
-                                TrackCard(track = track)
+                                var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                                TrackCard(
+                                    track = track,
+                                    onClick = { 
+                                        playerViewModel.playQueue(listOf(track), 0)
+                                        onNavigateToPlayer()
+                                    },
+                                    onAddToPlaylist = { showAddToPlaylist = true },
+                                    onRename = { playerViewModel.renameTrack(track, it) },
+                                    onDelete = { playerViewModel.deleteTrack(track) }
+                                )
+                                if (showAddToPlaylist) {
+                                    com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
+                                        trackId = track.id,
+                                        onDismiss = { showAddToPlaylist = false }
+                                    )
+                                }
                             }
                         }
                     }
@@ -128,7 +149,23 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             items(state.favorites) { track ->
-                                TrackCard(track = track)
+                                var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                                TrackCard(
+                                    track = track, 
+                                    onClick = { 
+                                        playerViewModel.playQueue(listOf(track), 0)
+                                        onNavigateToPlayer()
+                                    },
+                                    onAddToPlaylist = { showAddToPlaylist = true },
+                                    onRename = { playerViewModel.renameTrack(track, it) },
+                                    onDelete = { playerViewModel.deleteTrack(track) }
+                                )
+                                if (showAddToPlaylist) {
+                                    com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
+                                        trackId = track.id,
+                                        onDismiss = { showAddToPlaylist = false }
+                                    )
+                                }
                             }
                         }
                     }
@@ -138,11 +175,19 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TrackCard(track: Track) {
+fun TrackCard(
+    track: Track, 
+    onClick: () -> Unit = {},
+    onAddToPlaylist: () -> Unit,
+    onRename: (String) -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier.size(120.dp, 160.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        onClick = onClick
     ) {
         Column(
             modifier = Modifier.padding(8.dp)
@@ -160,17 +205,28 @@ fun TrackCard(track: Track) {
                     modifier = Modifier.size(48.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                    com.example.privatemusiclibrary.ui.components.TrackActionMenu(
+                        track = track,
+                        onPlay = onClick,
+                        onAddToPlaylist = onAddToPlaylist,
+                        onRename = onRename,
+                        onDelete = onDelete
+                    )
+                }
             }
             Text(
                 text = track.title,
                 style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = track.artist ?: "Unknown Artist",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -179,6 +235,7 @@ fun TrackCard(track: Track) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
+    onNavigateToPlayer: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -187,26 +244,51 @@ fun LibraryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Library") },
-                actions = {
-                    if (isScanning) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(end = 16.dp)
-                                .size(24.dp),
-                            strokeWidth = 2.dp
+            val searchQuery by viewModel.searchQuery.collectAsState()
+            var isSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            
+            if (isSearchActive) {
+                TopAppBar(
+                    title = {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { viewModel.updateSearchQuery(it) },
+                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                            placeholder = { Text("Search title or artist...") },
+                            singleLine = true,
+                            trailingIcon = {
+                                IconButton(onClick = { 
+                                    viewModel.updateSearchQuery("")
+                                    isSearchActive = false 
+                                }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                }
+                            }
                         )
-                    } else {
-                        IconButton(onClick = { viewModel.scanLibrary() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Scan Library")
+                    }
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("Library") },
+                    actions = {
+                        if (isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .padding(end = 16.dp)
+                                    .size(24.dp),
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            IconButton(onClick = { viewModel.scanLibrary() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Scan Library")
+                            }
+                        }
+                        IconButton(onClick = { isSearchActive = true }) {
+                            Icon(Icons.Default.Search, contentDescription = "Search")
                         }
                     }
-                    IconButton(onClick = { /* TODO */ }) {
-                        Icon(Icons.Default.Search, contentDescription = "Search")
-                    }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         Box(
@@ -256,11 +338,13 @@ fun LibraryScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(currentState.tracks) { track ->
+                        itemsIndexed(currentState.tracks) { index, track ->
                             Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { playerViewModel.play(track) }
+                                onClick = { 
+                                    playerViewModel.playQueue(listOf(track), 0)
+                                    onNavigateToPlayer()
+                                },
+                                modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -276,12 +360,16 @@ fun LibraryScreen(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = track.title,
-                                            style = MaterialTheme.typography.bodyLarge
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
                                             text = track.artist ?: "Unknown Artist",
                                             style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                     if (track.isFavorite) {
@@ -292,8 +380,24 @@ fun LibraryScreen(
                                             modifier = Modifier.padding(end = 8.dp)
                                         )
                                     }
-                                    IconButton(onClick = { /* TODO: Show Menu */ }) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                                    var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+                                    
+                                    com.example.privatemusiclibrary.ui.components.TrackActionMenu(
+                                        track = track,
+                                        onPlay = {
+                                            playerViewModel.playQueue(listOf(track), 0)
+                                            onNavigateToPlayer()
+                                        },
+                                        onAddToPlaylist = { showAddToPlaylist = true },
+                                        onRename = { newName -> playerViewModel.renameTrack(track, newName) },
+                                        onDelete = { playerViewModel.deleteTrack(track) }
+                                    )
+                                    
+                                    if (showAddToPlaylist) {
+                                        com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
+                                            trackId = track.id,
+                                            onDismiss = { showAddToPlaylist = false }
+                                        )
                                     }
                                 }
                             }
@@ -308,131 +412,220 @@ fun LibraryScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportScreen(
+    sharedUrl: String? = null,
+    onSharedUrlHandled: () -> Unit = {},
     viewModel: ImportViewModel = hiltViewModel()
 ) {
+    androidx.compose.runtime.LaunchedEffect(sharedUrl) {
+        if (sharedUrl != null) {
+            viewModel.onUrlInputChanged(sharedUrl)
+            viewModel.startImport()
+            onSharedUrlHandled()
+        }
+    }
     val state by viewModel.uiState.collectAsState()
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Import Music") })
+            LargeTopAppBar(
+                title = { Text("Import Music") }
+            )
         }
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            OutlinedTextField(
-                value = state.urlInput,
-                onValueChange = { viewModel.onUrlInputChanged(it) },
-                label = { Text("Paste a media URL") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                isError = state.error != null,
-                enabled = !state.isImporting
-            )
             
-            if (state.error != null) {
-                Text(
-                    text = state.error!!,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(start = 16.dp)
-                )
+            if (!state.isStorageConfigured) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Storage not configured. Please configure it in Settings.",
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                }
             }
-            
-            Text(
-                text = "Only supported URLs and content you are authorized to save can be imported.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
-            Button(
-                onClick = { viewModel.startImport() },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = state.urlInput.isNotBlank() && state.isStorageConfigured && !state.isImporting
-            ) {
-                if (state.isImporting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text("Import")
+
+            if (state.currentJob == null && !state.isImporting) {
+                // Input section
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(
+                            text = "Paste a media URL to extract audio",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = state.urlInput,
+                            onValueChange = { viewModel.onUrlInputChanged(it) },
+                            placeholder = { Text("https://...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            isError = state.error != null,
+                            enabled = !state.isImporting,
+                            shape = MaterialTheme.shapes.medium
+                        )
+                        
+                        if (state.error != null) {
+                            Text(
+                                text = state.error!!,
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        
+                        Button(
+                            onClick = { viewModel.startImport() },
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            enabled = state.urlInput.isNotBlank() && state.isStorageConfigured && !state.isImporting
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Extract & Import")
+                        }
+                    }
+                }
+            } else if (state.currentJob == null && state.isImporting) {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Receiving link...",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
             
-            if (!state.isStorageConfigured) {
-                Text(
-                    text = "Your music storage location is no longer accessible. Please configure it in Settings.",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
-            
-            if (state.activeJobs.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Recent Imports", style = MaterialTheme.typography.titleMedium)
+            state.currentJob?.let { job ->
+                val isError = job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.FAILED
+                val isComplete = job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED
                 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isError) MaterialTheme.colorScheme.errorContainer 
+                        else if (isComplete) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surface
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                 ) {
-                    items(state.activeJobs) { job ->
-                        Card(
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = job.title ?: "Extracting media...",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    maxLines = 1,
+                                    color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
+                                )
                                 Text(
                                     text = job.sourceUrl,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1,
+                                    color = if (isError) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                
-                                Spacer(modifier = Modifier.height(8.dp))
-                                
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = job.status.name,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = when (job.status) {
-                                            com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED -> MaterialTheme.colorScheme.primary
-                                            com.example.privatemusiclibrary.domain.model.ImportJobStatus.FAILED -> MaterialTheme.colorScheme.error
-                                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                                        }
-                                    )
-                                    
-                                    if (job.status != com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED &&
-                                        job.status != com.example.privatemusiclibrary.domain.model.ImportJobStatus.FAILED &&
-                                        job.status != com.example.privatemusiclibrary.domain.model.ImportJobStatus.CANCELLED) {
-                                        
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            if (job.progress >= 0) {
-                                                Text("${job.progress}%", style = MaterialTheme.typography.bodySmall)
-                                                Spacer(modifier = Modifier.width(8.dp))
-                                            }
-                                            TextButton(onClick = { viewModel.cancelImport(job.id) }) {
-                                                Text("Cancel")
-                                            }
-                                        }
-                                    }
+                            }
+                            
+                            if (isComplete) {
+                                Icon(
+                                    Icons.Default.CheckCircle, 
+                                    contentDescription = "Completed",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            } else if (isError) {
+                                Icon(
+                                    Icons.Default.Error, 
+                                    contentDescription = "Failed",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        if (!isComplete && !isError && job.status != com.example.privatemusiclibrary.domain.model.ImportJobStatus.CANCELLED) {
+                            LinearProgressIndicator(
+                                progress = if (job.progress > 0) job.progress / 100f else 0f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val statusText = when (job.status) {
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.QUEUED,
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.VALIDATING -> "Receiving link..."
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.RESOLVING -> "Preparing media..."
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.DOWNLOADING -> "Downloading audio..."
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.CONVERTING -> "Converting audio..."
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.SAVING -> "Saving to library..."
+                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED -> "✓ Added to Mixtape"
+                                    else -> job.status.name
                                 }
-                                
-                                if (job.errorMessage != null) {
-                                    Text(
-                                        text = job.errorMessage,
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        modifier = Modifier.padding(top = 4.dp)
-                                    )
+                                Text(
+                                    text = statusText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                TextButton(onClick = { viewModel.cancelImport(job.id) }) {
+                                    Text("Cancel")
+                                }
+                            }
+                        }
+                        
+                        if (isError) {
+                            if (job.errorMessage != null) {
+                                Text(
+                                    text = job.errorMessage,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(onClick = { viewModel.clearCurrentJob() }) {
+                                    Text("Dismiss")
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                TextButton(onClick = { 
+                                    viewModel.clearCurrentJob()
+                                    viewModel.onUrlInputChanged(job.sourceUrl)
+                                    viewModel.startImport() 
+                                }) {
+                                    Text("Retry")
                                 }
                             }
                         }
@@ -445,7 +638,7 @@ fun ImportScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel: com.example.privatemusiclibrary.ui.screens.auth.AuthViewModel? = null) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     
@@ -514,10 +707,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 SettingsSectionHeader("Account")
                 SettingsItem(
                     icon = Icons.Default.Person,
-                    title = "Sign In",
-                    subtitle = "Connect to sync your library",
-                    onClick = null,
-                    enabled = false
+                    title = "Sign Out",
+                    subtitle = "Disconnect from Mixtape API",
+                    onClick = { authViewModel?.logout() }
                 )
             }
             

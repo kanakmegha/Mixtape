@@ -73,7 +73,13 @@ interface PlaylistDao {
     @Delete
     suspend fun delete(playlist: PlaylistEntity): Int
 
-    @Query("SELECT * FROM playlists")
+    @Query("SELECT * FROM playlists WHERE id = :id")
+    suspend fun getById(id: String): PlaylistEntity?
+
+    @Query("SELECT * FROM playlists WHERE id = :id")
+    fun observeById(id: String): Flow<PlaylistEntity?>
+
+    @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PlaylistEntity>>
 }
 
@@ -84,6 +90,21 @@ interface PlaylistTrackDao {
 
     @Delete
     suspend fun delete(playlistTrack: PlaylistTrackEntity): Int
+
+    @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun removeTrack(playlistId: String, trackId: String): Int
+
+    @Query("UPDATE playlist_tracks SET position = :position WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun updatePosition(playlistId: String, trackId: String, position: Int): Int
+
+    @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlistId = :playlistId")
+    suspend fun getTrackCount(playlistId: String): Int
+
+    @Query("SELECT COUNT(*) FROM playlist_tracks WHERE playlistId = :playlistId")
+    fun observeTrackCount(playlistId: String): Flow<Int>
+
+    @Query("SELECT playlistId FROM playlist_tracks WHERE trackId = :trackId")
+    fun observePlaylistsForTrack(trackId: String): Flow<List<String>>
 
     @Query("SELECT t.* FROM tracks t INNER JOIN playlist_tracks pt ON t.id = pt.trackId WHERE pt.playlistId = :playlistId ORDER BY pt.position ASC")
     fun observeTracksForPlaylist(playlistId: String): Flow<List<TrackEntity>>

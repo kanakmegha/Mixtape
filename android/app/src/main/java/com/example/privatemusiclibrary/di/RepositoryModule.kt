@@ -77,4 +77,10 @@ abstract class RepositoryModule {
     abstract fun bindDirectAudioUrlExtractor(
         impl: com.example.privatemusiclibrary.data.extraction.DirectAudioUrlExtractor
     ): com.example.privatemusiclibrary.domain.extraction.AudioExtractor
+
+    @Binds
+    @dagger.multibindings.IntoSet
+    abstract fun bindYtDlpAudioExtractor(
+        impl: com.example.privatemusiclibrary.data.extraction.YtDlpAudioExtractor
+    ): com.example.privatemusiclibrary.domain.extraction.AudioExtractor
 }

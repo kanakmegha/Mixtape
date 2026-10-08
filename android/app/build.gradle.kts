@@ -20,9 +20,14 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "API_BASE_URL", "\"http://192.168.1.83:8081/api/\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // Production URL: Replace with actual Vercel/domain URL
+            buildConfigField("String", "API_BASE_URL", "\"https://your-vercel-domain.vercel.app/api/\"")
         }
     }
     compileOptions {
@@ -32,11 +37,14 @@ android {
     buildFeatures {
       compose = true
       aidl = false
-      buildConfig = false
+      buildConfig = true
       shaders = false
     }
 
     packaging {
+      jniLibs {
+        useLegacyPackaging = true
+      }
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
       }
@@ -111,4 +119,14 @@ dependencies {
   implementation("androidx.work:work-runtime-ktx:2.9.0")
   implementation("androidx.hilt:hilt-work:1.2.0")
   ksp("androidx.hilt:hilt-compiler:1.2.0")
+
+  // YoutubeDL (Media extraction)
+  implementation(libs.youtubedl.android)
+  implementation(libs.youtubedl.ffmpeg)
+
+  // Network & Auth
+  implementation("com.squareup.retrofit2:retrofit:2.11.0")
+  implementation("com.squareup.retrofit2:converter-gson:2.11.0")
+  implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+  implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
 }
