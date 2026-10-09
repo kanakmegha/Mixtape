@@ -4,27 +4,41 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.privatemusiclibrary.domain.model.ImportJobStatus
 import com.example.privatemusiclibrary.domain.model.Track
+import com.example.privatemusiclibrary.theme.Dimens
+import com.example.privatemusiclibrary.ui.components.EmptyStateView
+import com.example.privatemusiclibrary.ui.components.MixtapeTrackCard
+import com.example.privatemusiclibrary.ui.components.MixtapeTrackRow
+import com.example.privatemusiclibrary.ui.components.SectionHeader
+import com.example.privatemusiclibrary.ui.screens.auth.AuthViewModel
 
 @Composable
 fun LoginScreen() {
@@ -54,7 +68,33 @@ fun HomeScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Mixtape") }
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MusicNote,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(Dimens.spacingSm))
+                        Text(
+                            text = "Mixtape",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { innerPadding ->
@@ -62,63 +102,50 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            contentPadding = PaddingValues(horizontal = Dimens.spacingLg, vertical = Dimens.spacingMd),
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingXl)
         ) {
             item {
-                Text(
-                    text = "Welcome back",
-                    style = MaterialTheme.typography.headlineMedium
-                )
+                Column {
+                    Text(
+                        text = "Welcome back",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Your personal library at a glance",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             if (state.recentlyPlayed.isEmpty() && state.favorites.isEmpty() && !state.isLoading) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 48.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = "No music yet",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            text = "Import your first track to start building your library.",
-                            style = MaterialTheme.typography.bodyLarge,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        FilledTonalButton(onClick = onNavigateToImport) {
-                            Icon(Icons.Default.Download, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Import Music")
-                        }
-                    }
+                    EmptyStateView(
+                        icon = Icons.Default.MusicNote,
+                        title = "No music in your library yet",
+                        description = "Extract audio from online links or scan local storage to start listening.",
+                        actionText = "Import Music",
+                        onActionClick = onNavigateToImport
+                    )
                 }
             } else {
                 if (state.recentlyPlayed.isNotEmpty()) {
                     item {
-                        Text(
-                            text = "Recently Played",
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        SectionHeader(
+                            title = "Recently Played",
+                            actionText = "See All",
+                            onActionClick = onNavigateToLibrary
                         )
                         LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingLg),
+                            contentPadding = PaddingValues(vertical = Dimens.spacingSm)
                         ) {
                             items(state.recentlyPlayed) { track ->
-                                var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-                                TrackCard(
+                                var showAddToPlaylist by remember { mutableStateOf(false) }
+                                MixtapeTrackCard(
                                     track = track,
                                     onClick = {
                                         playerViewModel.playQueue(listOf(track), 0)
@@ -129,7 +156,7 @@ fun HomeScreen(
                                     onDelete = { playerViewModel.deleteTrack(track) }
                                 )
                                 if (showAddToPlaylist) {
-                                    com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
+                                    AddToPlaylistBottomSheet(
                                         trackId = track.id,
                                         onDismiss = { showAddToPlaylist = false }
                                     )
@@ -138,19 +165,21 @@ fun HomeScreen(
                         }
                     }
                 }
+
                 if (state.favorites.isNotEmpty()) {
                     item {
-                        Text(
-                            text = "Favorites",
-                            style = MaterialTheme.typography.titleLarge,
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        SectionHeader(
+                            title = "Favorites",
+                            actionText = "Library",
+                            onActionClick = onNavigateToLibrary
                         )
                         LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingLg),
+                            contentPadding = PaddingValues(vertical = Dimens.spacingSm)
                         ) {
                             items(state.favorites) { track ->
-                                var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-                                TrackCard(
+                                var showAddToPlaylist by remember { mutableStateOf(false) }
+                                MixtapeTrackCard(
                                     track = track,
                                     onClick = {
                                         playerViewModel.playQueue(listOf(track), 0)
@@ -161,7 +190,7 @@ fun HomeScreen(
                                     onDelete = { playerViewModel.deleteTrack(track) }
                                 )
                                 if (showAddToPlaylist) {
-                                    com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
+                                    AddToPlaylistBottomSheet(
                                         trackId = track.id,
                                         onDismiss = { showAddToPlaylist = false }
                                     )
@@ -171,63 +200,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun TrackCard(
-    track: Track,
-    onClick: () -> Unit = {},
-    onAddToPlaylist: () -> Unit,
-    onRename: (String) -> Unit,
-    onDelete: () -> Unit
-) {
-    Card(
-        modifier = Modifier.size(120.dp, 160.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        onClick = onClick
-    ) {
-        Column(
-            modifier = Modifier.padding(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(1f)
-                    .padding(bottom = 8.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                    com.example.privatemusiclibrary.ui.components.TrackActionMenu(
-                        track = track,
-                        onPlay = onClick,
-                        onAddToPlaylist = onAddToPlaylist,
-                        onRename = onRename,
-                        onDelete = onDelete
-                    )
-                }
-            }
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = track.artist ?: "Unknown Artist",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
@@ -245,7 +217,7 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             val searchQuery by viewModel.searchQuery.collectAsState()
-            var isSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            var isSearchActive by remember { mutableStateOf(false) }
 
             if (isSearchActive) {
                 TopAppBar(
@@ -253,30 +225,45 @@ fun LibraryScreen(
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { viewModel.updateSearchQuery(it) },
-                            modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(end = Dimens.spacingSm),
                             placeholder = { Text("Search title or artist...") },
                             singleLine = true,
+                            shape = RoundedCornerShape(Dimens.radiusMd),
                             trailingIcon = {
                                 IconButton(onClick = {
                                     viewModel.updateSearchQuery("")
                                     isSearchActive = false
                                 }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    Icon(Icons.Default.Close, contentDescription = "Clear search")
                                 }
                             }
                         )
-                    }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
             } else {
                 TopAppBar(
-                    title = { Text("Library") },
+                    title = {
+                        Column {
+                            Text(
+                                text = "Library",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
                     actions = {
                         if (isScanning) {
                             CircularProgressIndicator(
                                 modifier = Modifier
-                                    .padding(end = 16.dp)
-                                    .size(24.dp),
-                                strokeWidth = 2.dp
+                                    .padding(end = Dimens.spacingLg)
+                                    .size(22.dp),
+                                strokeWidth = 2.5.dp,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         } else {
                             IconButton(onClick = { viewModel.scanLibrary() }) {
@@ -284,9 +271,12 @@ fun LibraryScreen(
                             }
                         }
                         IconButton(onClick = { isSearchActive = true }) {
-                            Icon(Icons.Default.Search, contentDescription = "Search")
+                            Icon(Icons.Default.Search, contentDescription = "Search Library")
                         }
-                    }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background
+                    )
                 )
             }
         }
@@ -298,108 +288,66 @@ fun LibraryScreen(
         ) {
             when (val currentState = state) {
                 is LibraryUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    }
                 }
                 is LibraryUiState.Empty -> {
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.LibraryMusic,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    EmptyStateView(
+                        icon = Icons.Default.LibraryMusic,
+                        title = "No music in your library",
+                        description = "Add music files to your configured storage location or import tracks using online links.",
+                        actionText = "Scan Storage",
+                        onActionClick = { viewModel.scanLibrary() }
+                    )
+                }
+                is LibraryUiState.Error -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(
-                            text = "No music yet",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            text = "Add music to your configured storage location and it will appear here.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            text = "Error loading library: ${currentState.message}",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(Dimens.spacingXl)
                         )
                     }
                 }
-                is LibraryUiState.Error -> {
-                    Text(
-                        text = "Error: ${currentState.message}",
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.align(Alignment.Center)
-                    )
-                }
                 is LibraryUiState.Success -> {
                     LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        contentPadding = PaddingValues(horizontal = Dimens.spacingSm, vertical = Dimens.spacingSm),
+                        verticalArrangement = Arrangement.spacedBy(Dimens.spacingXs)
                     ) {
+                        item {
+                            Text(
+                                text = "${currentState.tracks.size} tracks",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = Dimens.spacingLg, vertical = Dimens.spacingSm)
+                            )
+                        }
                         itemsIndexed(currentState.tracks) { index, track ->
-                            Card(
+                            var showAddToPlaylist by remember { mutableStateOf(false) }
+
+                            MixtapeTrackRow(
+                                track = track,
                                 onClick = {
-                                    playerViewModel.playQueue(listOf(track), 0)
+                                    playerViewModel.playQueue(currentState.tracks, index)
                                     onNavigateToPlayer()
                                 },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        modifier = Modifier.padding(end = 16.dp)
-                                    )
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = track.title,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = track.artist ?: "Unknown Artist",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (track.isFavorite) {
-                                        Icon(
-                                            imageVector = Icons.Default.Favorite,
-                                            contentDescription = "Favorite",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(end = 8.dp)
-                                        )
-                                    }
-                                    var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-
-                                    com.example.privatemusiclibrary.ui.components.TrackActionMenu(
-                                        track = track,
-                                        onPlay = {
-                                            playerViewModel.playQueue(listOf(track), 0)
-                                            onNavigateToPlayer()
-                                        },
-                                        onAddToPlaylist = { showAddToPlaylist = true },
-                                        onRename = { newName -> playerViewModel.renameTrack(track, newName) },
-                                        onDelete = { playerViewModel.deleteTrack(track) }
-                                    )
-
-                                    if (showAddToPlaylist) {
-                                        com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
-                                            trackId = track.id,
-                                            onDismiss = { showAddToPlaylist = false }
-                                        )
-                                    }
+                                onAddToPlaylist = { showAddToPlaylist = true },
+                                onRename = { newName -> playerViewModel.renameTrack(track, newName) },
+                                onDelete = { playerViewModel.deleteTrack(track) },
+                                onToggleFavorite = {
+                                    playerViewModel.playQueue(currentState.tracks, index)
+                                    playerViewModel.toggleFavorite()
                                 }
+                            )
+
+                            if (showAddToPlaylist) {
+                                AddToPlaylistBottomSheet(
+                                    trackId = track.id,
+                                    onDismiss = { showAddToPlaylist = false }
+                                )
                             }
                         }
                     }
@@ -416,7 +364,7 @@ fun ImportScreen(
     onSharedUrlHandled: () -> Unit = {},
     viewModel: ImportViewModel = hiltViewModel()
 ) {
-    androidx.compose.runtime.LaunchedEffect(sharedUrl) {
+    LaunchedEffect(sharedUrl) {
         if (sharedUrl != null) {
             viewModel.onUrlInputChanged(sharedUrl)
             viewModel.startImport()
@@ -427,8 +375,17 @@ fun ImportScreen(
 
     Scaffold(
         topBar = {
-            LargeTopAppBar(
-                title = { Text("Import Music") }
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Import Music",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { innerPadding ->
@@ -436,22 +393,26 @@ fun ImportScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(horizontal = Dimens.spacingXl),
+            verticalArrangement = Arrangement.spacedBy(Dimens.spacingXl)
         ) {
-
             if (!state.isStorageConfigured) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = RoundedCornerShape(Dimens.radiusMd)
                 ) {
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(Dimens.spacingLg),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
-                        Spacer(modifier = Modifier.width(16.dp))
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(modifier = Modifier.width(Dimens.spacingLg))
                         Text(
-                            text = "Storage not configured. Please configure it in Settings.",
+                            text = "Storage directory is not configured. Please select a folder in Settings.",
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -460,26 +421,50 @@ fun ImportScreen(
             }
 
             if (state.currentJob == null && !state.isImporting) {
-                // Input section
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = MaterialTheme.shapes.large
+                    shape = RoundedCornerShape(Dimens.radiusXl),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(Dimens.spacingXl),
+                        verticalArrangement = Arrangement.spacedBy(Dimens.spacingLg)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Link,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(Dimens.spacingMd))
+                            Text(
+                                text = "Paste Link to Extract Audio",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
                         Text(
-                            text = "Paste a media URL to extract audio",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "Supports public video and audio links. Audio will be extracted and saved to your Mixtape library.",
+                            style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
                         OutlinedTextField(
                             value = state.urlInput,
                             onValueChange = { viewModel.onUrlInputChanged(it) },
-                            placeholder = { Text("https://...") },
+                            placeholder = { Text("https://example.com/watch?v=...") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             isError = state.error != null,
                             enabled = !state.isImporting,
-                            shape = MaterialTheme.shapes.medium
+                            shape = RoundedCornerShape(Dimens.radiusMd),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                            )
                         )
 
                         if (state.error != null) {
@@ -492,46 +477,58 @@ fun ImportScreen(
 
                         Button(
                             onClick = { viewModel.startImport() },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp),
+                            shape = RoundedCornerShape(Dimens.radiusMd),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             enabled = state.urlInput.isNotBlank() && state.isStorageConfigured && !state.isImporting
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Extract & Import")
+                            Spacer(modifier = Modifier.width(Dimens.spacingSm))
+                            Text(
+                                text = "Extract & Import",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
             } else if (state.currentJob == null && state.isImporting) {
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(Dimens.radiusLg),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(Dimens.spacingLg)) {
                         Text(
-                            text = "Receiving link...",
-                            style = MaterialTheme.typography.titleMedium
+                            text = "Receiving media link...",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        Spacer(modifier = Modifier.height(Dimens.spacingLg))
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             }
 
             state.currentJob?.let { job ->
-                val isError = job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.FAILED
-                val isComplete = job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED
+                val isError = job.status == ImportJobStatus.FAILED
+                val isComplete = job.status == ImportJobStatus.COMPLETED
 
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(Dimens.radiusLg),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isError) MaterialTheme.colorScheme.errorContainer
                         else if (isComplete) MaterialTheme.colorScheme.primaryContainer
-                        else MaterialTheme.colorScheme.surface
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        else MaterialTheme.colorScheme.surfaceVariant
+                    )
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(modifier = Modifier.padding(Dimens.spacingLg)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -541,27 +538,30 @@ fun ImportScreen(
                                 Text(
                                     text = job.title ?: "Extracting media...",
                                     style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = if (isError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = job.sourceUrl,
                                     style = MaterialTheme.typography.bodySmall,
                                     maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     color = if (isError) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
 
                             if (isComplete) {
                                 Icon(
-                                    Icons.Default.CheckCircle,
+                                    imageVector = Icons.Default.CheckCircle,
                                     contentDescription = "Completed",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(32.dp)
                                 )
                             } else if (isError) {
                                 Icon(
-                                    Icons.Default.Error,
+                                    imageVector = Icons.Default.Error,
                                     contentDescription = "Failed",
                                     tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(32.dp)
@@ -569,26 +569,28 @@ fun ImportScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-                        if (!isComplete && !isError && job.status != com.example.privatemusiclibrary.domain.model.ImportJobStatus.CANCELLED) {
+                        if (!isComplete && !isError && job.status != ImportJobStatus.CANCELLED) {
                             LinearProgressIndicator(
-                                progress = if (job.progress > 0) job.progress / 100f else 0f,
-                                modifier = Modifier.fillMaxWidth()
+                                progress = { if (job.progress > 0) job.progress / 100f else 0f },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.primary
                             )
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = Dimens.spacingSm),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val statusText = when (job.status) {
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.QUEUED,
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.VALIDATING -> "Receiving link..."
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.RESOLVING -> "Preparing media..."
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.DOWNLOADING -> "Downloading audio..."
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.CONVERTING -> "Converting audio..."
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.SAVING -> "Saving to library..."
-                                    com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED -> "✓ Added to Mixtape"
+                                    ImportJobStatus.QUEUED, ImportJobStatus.VALIDATING -> "Receiving link..."
+                                    ImportJobStatus.RESOLVING -> "Preparing media source..."
+                                    ImportJobStatus.DOWNLOADING -> "Downloading audio stream..."
+                                    ImportJobStatus.CONVERTING -> "Converting audio format..."
+                                    ImportJobStatus.SAVING -> "Saving to library..."
+                                    ImportJobStatus.COMPLETED -> "✓ Added to Mixtape"
                                     else -> job.status.name
                                 }
                                 Text(
@@ -603,23 +605,25 @@ fun ImportScreen(
                         }
 
                         if (isError) {
-                            if (job.errorMessage != null) {
+                            job.errorMessage?.let { msg ->
                                 Text(
-                                    text = job.errorMessage,
+                                    text = msg,
                                     color = MaterialTheme.colorScheme.error,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    modifier = Modifier.padding(top = 8.dp)
+                                    modifier = Modifier.padding(top = Dimens.spacingSm)
                                 )
                             }
 
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = Dimens.spacingSm),
                                 horizontalArrangement = Arrangement.End
                             ) {
                                 TextButton(onClick = { viewModel.clearCurrentJob() }) {
                                     Text("Dismiss")
                                 }
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(Dimens.spacingSm))
                                 TextButton(onClick = {
                                     viewModel.clearCurrentJob()
                                     viewModel.onUrlInputChanged(job.sourceUrl)
@@ -638,7 +642,10 @@ fun ImportScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel: com.example.privatemusiclibrary.ui.screens.auth.AuthViewModel? = null) {
+fun SettingsScreen(
+    viewModel: SettingsViewModel = hiltViewModel(),
+    authViewModel: AuthViewModel? = null
+) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
 
@@ -656,7 +663,16 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") }
+                title = {
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { innerPadding ->
@@ -664,7 +680,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding),
-            contentPadding = PaddingValues(vertical = 8.dp)
+            contentPadding = PaddingValues(vertical = Dimens.spacingSm)
         ) {
             item {
                 SettingsSectionHeader("Storage")
@@ -673,7 +689,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     SettingsItem(
                         icon = Icons.Default.FolderOff,
                         title = "Storage not configured",
-                        subtitle = "Tap to choose a directory for your music",
+                        subtitle = "Tap to select a local folder for downloaded audio",
                         onClick = { documentTreeLauncher.launch(null) }
                     )
                 } else {
@@ -693,16 +709,15 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
             }
 
             item {
-                SettingsSectionHeader("Playback")
+                SettingsSectionHeader("Playback & Audio")
                 SettingsItem(
                     icon = Icons.Default.HighQuality,
                     title = "Audio Quality",
-                    subtitle = "Coming soon",
+                    subtitle = "High quality lossy / lossless (Default)",
                     onClick = null,
-                    enabled = false
+                    enabled = true
                 )
             }
-
 
             item {
                 SettingsSectionHeader("Invite Friends")
@@ -710,7 +725,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                 SettingsItem(
                     icon = Icons.Default.PersonAdd,
                     title = "Create Invitation",
-                    subtitle = "Invite someone to join Mixtape",
+                    subtitle = "Generate an invite link for a friend to join Mixtape",
                     onClick = { viewModel.createInvitation() },
                     enabled = !state.isCreatingInvitation
                 )
@@ -719,15 +734,19 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                            .padding(horizontal = Dimens.spacingLg, vertical = Dimens.spacingSm),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            strokeWidth = 2.dp
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text("Creating invitation...")
+                        Spacer(modifier = Modifier.width(Dimens.spacingMd))
+                        Text(
+                            text = "Creating invitation link...",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
                     }
                 }
 
@@ -735,49 +754,36 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     Text(
                         text = error,
                         color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = Dimens.spacingLg, vertical = Dimens.spacingSm)
                     )
                 }
 
-                
                 state.invitationToken?.let { token ->
                     SettingsItem(
                         icon = Icons.Default.Share,
-                        title = "Share Invitation",
-                        subtitle = "Tap to share your invitation link",
+                        title = "Share Invitation Link",
+                        subtitle = "Tap to copy or share invitation",
                         onClick = {
-                            val invitationUrl =
-                                "https://mixtape-web-eight.vercel.app/?token=${Uri.encode(token)}"
-
+                            val invitationUrl = "https://mixtape-web-eight.vercel.app/?token=${Uri.encode(token)}"
                             val shareMessage = """
                                 You're invited to join Mixtape! 🎵
 
-                                Open this link to view your invitation and get started:
+                                Open this link to get started:
                                 $invitationUrl
 
-                                If the link doesn't work, enter this invitation code when registering:
-                                $token
-                                """.trimIndent()
+                                Or enter code when registering: $token
+                            """.trimIndent()
 
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
                                 putExtra(Intent.EXTRA_TEXT, shareMessage)
                             }
-
-                            context.startActivity(
-                                Intent.createChooser(
-                                    shareIntent,
-                                    "Invite someone to Mixtape"
-                                )
-                            )
+                            context.startActivity(Intent.createChooser(shareIntent, "Share Mixtape Invitation"))
                         }
                     )
                 }
             }
-        
-    
-
-
 
             item {
                 SettingsSectionHeader("Account")
@@ -785,18 +791,17 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                 SettingsItem(
                     icon = Icons.Default.Person,
                     title = "Sign Out",
-                    subtitle = "Disconnect from Mixtape API",
+                    subtitle = "Disconnect account session from Mixtape server",
                     onClick = { authViewModel?.logout() }
                 )
             }
-
 
             item {
                 SettingsSectionHeader("About")
                 SettingsItem(
                     icon = Icons.Default.Info,
-                    title = "Version",
-                    subtitle = "1.0 (Pre-release)",
+                    title = "Mixtape Version",
+                    subtitle = "1.0.0 (Production Build)",
                     onClick = null
                 )
             }
@@ -810,7 +815,8 @@ fun SettingsSectionHeader(title: String) {
         text = title,
         style = MaterialTheme.typography.labelLarge,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(horizontal = Dimens.spacingLg, vertical = Dimens.spacingMd)
     )
 }
 
@@ -825,31 +831,46 @@ fun SettingsItem(
     Surface(
         onClick = onClick ?: {},
         enabled = onClick != null && enabled,
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.Transparent
     ) {
         Row(
             modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .padding(horizontal = Dimens.spacingLg, vertical = Dimens.spacingMd)
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                modifier = Modifier.padding(end = 16.dp)
-            )
-            Column {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(Dimens.radiusSm))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(Dimens.spacingLg))
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                    fontWeight = FontWeight.SemiBold
                 )
                 if (subtitle != null) {
                     Text(
                         text = subtitle,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                        color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

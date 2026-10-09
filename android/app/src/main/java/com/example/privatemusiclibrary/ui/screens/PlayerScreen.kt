@@ -1,7 +1,10 @@
 package com.example.privatemusiclibrary.ui.screens
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -15,10 +18,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.privatemusiclibrary.domain.player.RepeatMode
+import com.example.privatemusiclibrary.theme.Dimens
+import com.example.privatemusiclibrary.theme.MixtapeLimeAccent
+import com.example.privatemusiclibrary.theme.MixtapeVioletPrimary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,18 +35,17 @@ fun PlayerScreen(
 ) {
     val playerState by viewModel.playerState.collectAsState()
     val track = playerState.currentTrack
-    
+
     var showMenu by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showDetails by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
 
-    // Premium background gradient
     val backgroundBrush = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF1E213A), // Deep indigo/charcoal
-            Color(0xFF0F111A)  // Near black
+            Color(0xFF161926), // Deep rich violet-black
+            Color(0xFF0B0D14)  // Obsidian black
         )
     )
 
@@ -56,13 +62,22 @@ fun PlayerScreen(
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = Color.White)
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Close Player",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
                     }
                 },
                 actions = {
                     Box {
                         IconButton(onClick = { showMenu = true }) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options",
+                                tint = Color.White
+                            )
                         }
                         DropdownMenu(
                             expanded = showMenu,
@@ -70,43 +85,46 @@ fun PlayerScreen(
                         ) {
                             DropdownMenuItem(
                                 text = { Text("Rename") },
-                                onClick = { 
+                                onClick = {
                                     showRenameDialog = true
-                                    showMenu = false 
+                                    showMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Default.Edit, null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Add to playlist") },
-                                onClick = { 
+                                onClick = {
                                     showAddToPlaylist = true
-                                    showMenu = false 
+                                    showMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Default.PlaylistAdd, null) }
                             )
                             DropdownMenuItem(
                                 text = { Text(if (track?.isFavorite == true) "Remove favorite" else "Favorite") },
-                                onClick = { 
+                                onClick = {
                                     viewModel.toggleFavorite()
-                                    showMenu = false 
+                                    showMenu = false
                                 },
-                                leadingIcon = { 
-                                    Icon(if (track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder, null) 
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = if (track?.isFavorite == true) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = null
+                                    )
                                 }
                             )
                             DropdownMenuItem(
                                 text = { Text("Track details") },
-                                onClick = { 
+                                onClick = {
                                     showDetails = true
-                                    showMenu = false 
+                                    showMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Default.Info, null) }
                             )
                             DropdownMenuItem(
                                 text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                                onClick = { 
+                                onClick = {
                                     showDeleteConfirm = true
-                                    showMenu = false 
+                                    showMenu = false
                                 },
                                 leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) }
                             )
@@ -128,66 +146,80 @@ fun PlayerScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(horizontal = 32.dp),
+                    .padding(horizontal = Dimens.spacingXl),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.weight(0.5f))
 
-                // Artwork Placeholder
-                Box(
+                // Large Artwork View
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(0.85f)
                         .aspectRatio(1f)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(Color(0xFF2C3258), Color(0xFF1E213A))
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
+                        .clip(RoundedCornerShape(Dimens.radiusXl)),
+                    shape = RoundedCornerShape(Dimens.radiusXl),
+                    tonalElevation = 12.dp,
+                    shadowElevation = 16.dp
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = null,
-                        modifier = Modifier.size(120.dp),
-                        tint = Color.White.copy(alpha = 0.5f)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFF2E1B5B),
+                                        Color(0xFF1E2235)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MusicNote,
+                            contentDescription = null,
+                            modifier = Modifier.size(110.dp),
+                            tint = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.weight(0.5f))
 
-                // Title and Artist
+                // Track Title & Artist with Favorite Icon
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = track?.title ?: "Not Playing",
                             style = MaterialTheme.typography.headlineMedium,
                             color = Color.White,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = track?.artist ?: "Unknown Artist",
                             style = MaterialTheme.typography.titleMedium,
-                            color = Color(0xFFA0A5C0), // Soft lavender/gray
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    
+
                     val isFav = track?.isFavorite == true
-                    val scale = remember { androidx.compose.animation.core.Animatable(1f) }
-                    
+                    val scale = remember { Animatable(1f) }
+
                     LaunchedEffect(isFav) {
                         if (isFav) {
-                            scale.animateTo(1.3f, animationSpec = androidx.compose.animation.core.tween(100))
-                            scale.animateTo(1f, animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy))
+                            scale.animateTo(1.3f, animationSpec = tween(100))
+                            scale.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
                         } else {
-                            scale.animateTo(0.8f, animationSpec = androidx.compose.animation.core.tween(100))
-                            scale.animateTo(1f, animationSpec = androidx.compose.animation.core.spring(dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy))
+                            scale.animateTo(0.8f, animationSpec = tween(100))
+                            scale.animateTo(1f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy))
                         }
                     }
 
@@ -198,17 +230,17 @@ fun PlayerScreen(
                         Icon(
                             imageVector = if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                             contentDescription = "Favorite",
-                            tint = if (isFav) Color(0xFF6C63FF) else Color(0xFFA0A5C0),
+                            tint = if (isFav) MixtapeVioletPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(28.dp)
                                 .scale(scale.value)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Dimens.spacingLg))
 
-                // Progress Slider
+                // Seek Progress Slider
                 var isSeeking by remember { mutableStateOf(false) }
                 var sliderValue by remember { mutableStateOf(0f) }
 
@@ -230,32 +262,34 @@ fun PlayerScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = SliderDefaults.colors(
-                        thumbColor = Color(0xFF6C63FF),
-                        activeTrackColor = Color(0xFF6C63FF),
+                        thumbColor = MixtapeVioletPrimary,
+                        activeTrackColor = MixtapeVioletPrimary,
                         inactiveTrackColor = Color.White.copy(alpha = 0.2f)
                     )
                 )
 
-                // Time Texts
+                // Time Labels
                 Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Dimens.spacingXs),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = formatTime(if (isSeeking) (sliderValue * playerState.durationMs).toLong() else playerState.positionMs),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA0A5C0)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = formatTime(playerState.durationMs),
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFA0A5C0)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(Dimens.spacingXl))
 
-                // Controls
+                // Playback Controls Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -265,32 +299,42 @@ fun PlayerScreen(
                         Icon(
                             imageVector = Icons.Default.Shuffle,
                             contentDescription = "Shuffle",
-                            tint = if (playerState.shuffleEnabled) Color(0xFF6C63FF) else Color(0xFFA0A5C0)
+                            tint = if (playerState.shuffleEnabled) MixtapeLimeAccent else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    
-                    IconButton(onClick = { viewModel.skipPrevious() }, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", modifier = Modifier.size(40.dp), tint = Color.White)
+
+                    IconButton(onClick = { viewModel.skipPrevious() }, modifier = Modifier.size(52.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            modifier = Modifier.size(36.dp),
+                            tint = Color.White
+                        )
                     }
-                    
+
                     FloatingActionButton(
                         onClick = { if (playerState.isPlaying) viewModel.pause() else viewModel.resume() },
                         shape = CircleShape,
-                        containerColor = Color(0xFF6C63FF),
+                        containerColor = MixtapeVioletPrimary,
                         contentColor = Color.White,
-                        modifier = Modifier.size(80.dp)
+                        modifier = Modifier.size(72.dp)
                     ) {
                         Icon(
                             imageVector = if (playerState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (playerState.isPlaying) "Pause" else "Play",
-                            modifier = Modifier.size(48.dp)
+                            modifier = Modifier.size(42.dp)
                         )
                     }
-                    
-                    IconButton(onClick = { viewModel.skipNext() }, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Default.SkipNext, contentDescription = "Next", modifier = Modifier.size(40.dp), tint = Color.White)
+
+                    IconButton(onClick = { viewModel.skipNext() }, modifier = Modifier.size(52.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            modifier = Modifier.size(36.dp),
+                            tint = Color.White
+                        )
                     }
-                    
+
                     IconButton(onClick = { viewModel.toggleRepeatMode() }) {
                         Icon(
                             imageVector = when (playerState.repeatMode) {
@@ -298,27 +342,27 @@ fun PlayerScreen(
                                 else -> Icons.Default.Repeat
                             },
                             contentDescription = "Repeat",
-                            tint = if (playerState.repeatMode != RepeatMode.OFF) Color(0xFF6C63FF) else Color(0xFFA0A5C0)
+                            tint = if (playerState.repeatMode != RepeatMode.OFF) MixtapeLimeAccent else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.weight(1.5f))
+                Spacer(modifier = Modifier.weight(1f))
             }
         }
     }
-    
+
     // Delete Confirmation Dialog
     if (showDeleteConfirm && track != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete track?") },
-            text = { 
+            title = { Text("Delete track?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+            text = {
                 Column {
-                    Text("\"${track.title}\"")
+                    Text("\"${track.title}\"", fontWeight = FontWeight.SemiBold)
                     Text(track.artist ?: "Unknown Artist", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("This will remove the audio from your library and storage.")
+                    Spacer(modifier = Modifier.height(Dimens.spacingLg))
+                    Text("This will permanently remove the audio file from your library and storage.")
                 }
             },
             confirmButton = {
@@ -329,7 +373,7 @@ fun PlayerScreen(
                         onNavigateBack()
                     }
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text("Delete", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -339,53 +383,54 @@ fun PlayerScreen(
             }
         )
     }
-    
+
     // Rename Dialog
     if (showRenameDialog && track != null) {
         var newTitle by remember(track.title) { mutableStateOf(track.title) }
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename track") },
+            title = { Text("Rename track", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = newTitle,
                     onValueChange = { newTitle = it },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(Dimens.radiusMd)
                 )
             },
             confirmButton = {
-                TextButton(onClick = { 
+                TextButton(onClick = {
                     if (newTitle.isNotBlank()) {
                         viewModel.renameTrack(track, newTitle.trim())
                     }
-                    showRenameDialog = false 
-                }) { Text("Save") }
+                    showRenameDialog = false
+                }) { Text("Save", fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
                 TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
             }
         )
     }
-    
+
     // Track Details Dialog
     if (showDetails && track != null) {
         AlertDialog(
             onDismissRequest = { showDetails = false },
-            title = { Text("Track Details") },
+            title = { Text("Track Details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd)) {
                     DetailRow("Title", track.title)
                     DetailRow("Artist", track.artist ?: "Unknown")
-                    DetailRow("Source", track.sourcePlatform ?: "Local")
+                    DetailRow("Source Platform", track.sourcePlatform ?: "Local Storage")
                     if (track.sourceId != null) DetailRow("Source ID", track.sourceId)
                     DetailRow("Duration", formatTime(track.durationMs ?: 0))
-                    DetailRow("File Type", track.mimeType)
+                    DetailRow("MIME Type", track.mimeType)
                 }
             },
             confirmButton = {
                 TextButton(onClick = { showDetails = false }) {
-                    Text("Close")
+                    Text("Close", fontWeight = FontWeight.Bold)
                 }
             }
         )
@@ -396,7 +441,7 @@ fun PlayerScreen(
 private fun DetailRow(label: String, value: String) {
     Column {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+        Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

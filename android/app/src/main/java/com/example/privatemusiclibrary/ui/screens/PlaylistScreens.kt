@@ -1,27 +1,37 @@
 package com.example.privatemusiclibrary.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FeaturedPlayList
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.privatemusiclibrary.domain.model.Playlist
 import com.example.privatemusiclibrary.domain.model.Track
-import androidx.compose.foundation.background
-import androidx.compose.material.icons.automirrored.filled.FeaturedPlayList
+import com.example.privatemusiclibrary.theme.Dimens
+import com.example.privatemusiclibrary.ui.components.EmptyStateView
+import com.example.privatemusiclibrary.ui.components.MixtapeTrackRow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,13 +47,15 @@ fun PlaylistsScreen(
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("Create Playlist") },
+            title = { Text("Create Playlist", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = newPlaylistName,
                     onValueChange = { newPlaylistName = it },
-                    label = { Text("Name") },
-                    singleLine = true
+                    label = { Text("Playlist Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(Dimens.radiusMd)
                 )
             },
             confirmButton = {
@@ -57,7 +69,7 @@ fun PlaylistsScreen(
                         }
                     }
                 ) {
-                    Text("Create")
+                    Text("Create", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -71,71 +83,103 @@ fun PlaylistsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Playlists", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                title = {
+                    Text(
+                        text = "Playlists",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = {
-                newPlaylistName = ""
-                showCreateDialog = true 
-            }) {
+            FloatingActionButton(
+                onClick = {
+                    newPlaylistName = ""
+                    showCreateDialog = true
+                },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape
+            ) {
                 Icon(Icons.Default.Add, contentDescription = "Create Playlist")
             }
         }
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else if (uiState.playlists.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("No playlists yet", style = MaterialTheme.typography.titleLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Create a playlist to organize your music.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { 
+            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                EmptyStateView(
+                    icon = Icons.Default.QueueMusic,
+                    title = "No playlists created",
+                    description = "Organize your favorite music into custom playlists.",
+                    actionText = "Create Playlist",
+                    onActionClick = {
                         newPlaylistName = ""
-                        showCreateDialog = true 
-                    }) {
-                        Text("Create Playlist")
+                        showCreateDialog = true
                     }
-                }
+                )
             }
         } else {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(horizontal = Dimens.spacingLg, vertical = Dimens.spacingMd),
+                verticalArrangement = Arrangement.spacedBy(Dimens.spacingMd)
             ) {
                 items(uiState.playlists) { playlist ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onNavigateToPlaylist(playlist.id) },
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                        shape = RoundedCornerShape(Dimens.radiusLg),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                        )
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp),
+                                .padding(Dimens.spacingLg),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(56.dp)
-                                    .background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small),
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(Dimens.radiusMd))
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(
+                                                MaterialTheme.colorScheme.primary,
+                                                MaterialTheme.colorScheme.secondary
+                                            )
+                                        )
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.AutoMirrored.Filled.FeaturedPlayList, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.FeaturedPlayList,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
                             }
-                            Spacer(modifier = Modifier.width(16.dp))
+                            Spacer(modifier = Modifier.width(Dimens.spacingLg))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(playlist.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                // We could observe track count here, but we'll leave it simple for now or fetch it in VM
+                                Text(
+                                    text = playlist.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                             var showMenu by remember { mutableStateOf(false) }
                             Box {
@@ -144,7 +188,7 @@ fun PlaylistsScreen(
                                 }
                                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                                     DropdownMenuItem(
-                                        text = { Text("Delete") },
+                                        text = { Text("Delete Playlist", color = MaterialTheme.colorScheme.error) },
                                         onClick = {
                                             viewModel.deletePlaylist(playlist.id)
                                             showMenu = false
@@ -181,12 +225,14 @@ fun PlaylistDetailScreen(
     if (showRenameDialog) {
         AlertDialog(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename Playlist") },
+            title = { Text("Rename Playlist", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = renameName,
                     onValueChange = { renameName = it },
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(Dimens.radiusMd)
                 )
             },
             confirmButton = {
@@ -196,7 +242,7 @@ fun PlaylistDetailScreen(
                         showRenameDialog = false
                     }
                 }) {
-                    Text("Rename")
+                    Text("Save", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -208,7 +254,7 @@ fun PlaylistDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.playlist?.name ?: "Playlist") },
+                title = { Text(uiState.playlist?.name ?: "Playlist", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -230,7 +276,7 @@ fun PlaylistDetailScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Delete") },
+                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
                                 onClick = {
                                     viewModel.deletePlaylist(onNavigateBack)
                                     showMenu = false
@@ -238,13 +284,14 @@ fun PlaylistDetailScreen(
                             )
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { innerPadding ->
         if (uiState.isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
             }
         } else {
             Column(
@@ -255,7 +302,7 @@ fun PlaylistDetailScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
+                        .padding(horizontal = Dimens.spacingLg, vertical = Dimens.spacingMd),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
                     Button(
@@ -265,11 +312,16 @@ fun PlaylistDetailScreen(
                                 onNavigateToPlayer()
                             }
                         },
-                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .padding(end = Dimens.spacingSm),
+                        shape = RoundedCornerShape(Dimens.radiusMd),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Icon(Icons.Default.PlayArrow, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Play")
+                        Spacer(Modifier.width(Dimens.spacingSm))
+                        Text("Play", fontWeight = FontWeight.Bold)
                     }
                     Button(
                         onClick = {
@@ -279,18 +331,26 @@ fun PlaylistDetailScreen(
                                 onNavigateToPlayer()
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                        modifier = Modifier.weight(1f).padding(start = 8.dp)
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .padding(start = Dimens.spacingSm),
+                        shape = RoundedCornerShape(Dimens.radiusMd),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
                     ) {
-                        Icon(Icons.Default.Shuffle, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Shuffle")
+                        Icon(Icons.Default.Shuffle, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                        Spacer(Modifier.width(Dimens.spacingSm))
+                        Text("Shuffle", color = MaterialTheme.colorScheme.onSecondaryContainer, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 if (uiState.tracks.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("This playlist is empty.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = "This playlist is empty.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
@@ -326,48 +386,67 @@ fun TrackRow(
     onMoveUp: (() -> Unit)? = null,
     onMoveDown: (() -> Unit)? = null
 ) {
-    Row(
+    Surface(
+        onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = Dimens.spacingLg, vertical = 2.dp),
+        color = Color.Transparent
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1)
-            Text(track.artist ?: "Unknown Artist", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-        }
-        var showMenu by remember { mutableStateOf(false) }
-        Box {
-            IconButton(onClick = { showMenu = true }) {
-                Icon(Icons.Default.MoreVert, contentDescription = "More")
-            }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                if (onMoveUp != null) {
-                    DropdownMenuItem(
-                        text = { Text("Move Up") },
-                        onClick = {
-                            onMoveUp()
-                            showMenu = false
-                        }
-                    )
-                }
-                if (onMoveDown != null) {
-                    DropdownMenuItem(
-                        text = { Text("Move Down") },
-                        onClick = {
-                            onMoveDown()
-                            showMenu = false
-                        }
-                    )
-                }
-                DropdownMenuItem(
-                    text = { Text("Remove from playlist") },
-                    onClick = {
-                        onRemove()
-                        showMenu = false
-                    }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = Dimens.spacingMd),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                Text(
+                    text = track.artist ?: "Unknown Artist",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            var showMenu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More")
+                }
+                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                    if (onMoveUp != null) {
+                        DropdownMenuItem(
+                            text = { Text("Move Up") },
+                            onClick = {
+                                onMoveUp()
+                                showMenu = false
+                            }
+                        )
+                    }
+                    if (onMoveDown != null) {
+                        DropdownMenuItem(
+                            text = { Text("Move Down") },
+                            onClick = {
+                                onMoveDown()
+                                showMenu = false
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Remove from playlist", color = MaterialTheme.colorScheme.error) },
+                        onClick = {
+                            onRemove()
+                            showMenu = false
+                        }
+                    )
+                }
             }
         }
     }
