@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.kotlin.android)
@@ -8,27 +10,63 @@ plugins {
   id("kotlin-kapt")
 }
 
+// Release signing material lives OUTSIDE version control.
+// Provide android/keystore.properties (gitignored) or MIXTAPE_* environment variables.
+// See docs/RELEASE.md.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+fun signingValue(key: String, env: String): String? =
+    keystoreProps.getProperty(key) ?: System.getenv(env)
+val releaseStoreFile = signingValue("storeFile", "MIXTAPE_KEYSTORE_PATH")
+
 android {
     namespace = "com.example.privatemusiclibrary"
     compileSdk = 36
+
     defaultConfig {
-        applicationId = "com.example.privatemusiclibrary"
-        minSdk = 24
-        targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+      applicationId = "com.example.privatemusiclibrary"
+      minSdk = 24
+      targetSdk = 36
+
+      // Include only 64-bit ARM libraries to reduce APK size.
+      ndk {
+        abiFilters += listOf("arm64-v8a")
+      }
+
+      // Bump versionCode for EVERY distributed release (must strictly increase).
+      versionCode = (project.findProperty("mixtape.versionCode") as String?)?.toInt() ?: 1
+      versionName = (project.findProperty("mixtape.versionName") as String?) ?: "1.0.0"
+    }
+
+
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = signingValue("storePassword", "MIXTAPE_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "MIXTAPE_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "MIXTAPE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         debug {
             buildConfigField("String", "API_BASE_URL", "\"http://192.168.1.83:8081/api/\"")
         }
+
         release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Production URL: Replace with actual Vercel/domain URL
-            buildConfigField("String", "API_BASE_URL", "\"https://your-vercel-domain.vercel.app/api/\"")
-        }
+          isMinifyEnabled = true
+          isDebuggable = false
+          proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+          // Unsigned if no keystore is configured; never falls back to the debug key.
+          signingConfig = signingConfigs.findByName("release")
+          // Production API (public HTTPS, Vercel). Contains no secrets.
+          buildConfigField("String", "API_BASE_URL", "\"https://backend-woad-xi-54.vercel.app/api/\"")
+      }
+
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -98,12 +136,12 @@ dependencies {
   implementation(libs.androidx.lifecycle.viewmodel.navigation3)
   implementation(libs.androidx.navigation.compose)
   implementation("androidx.documentfile:documentfile:1.0.1")
-  
+
   // Room
   implementation(libs.room.runtime)
   ksp(libs.room.compiler)
   implementation(libs.room.ktx)
-  
+
   // Hilt
   implementation(libs.hilt.android)
   "kapt"(libs.hilt.compiler)

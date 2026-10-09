@@ -1,5 +1,6 @@
 package com.example.privatemusiclibrary.ui.screens
-
+import com.example.privatemusiclibrary.data.network.CreateInvitationRequest
+import com.example.privatemusiclibrary.data.network.MixtapeApi
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -64,7 +65,7 @@ class LibraryViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
-    
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
@@ -93,8 +94,8 @@ class LibraryViewModel @Inject constructor(
                     tracks
                 } else {
                     val q = query.trim().lowercase()
-                    tracks.filter { 
-                        it.title.lowercase().contains(q) || 
+                    tracks.filter {
+                        it.title.lowercase().contains(q) ||
                         (it.artist?.lowercase()?.contains(q) == true)
                     }
                 }
@@ -109,7 +110,7 @@ class LibraryViewModel @Inject constructor(
             }
         }
     }
-    
+
     fun scanLibrary() {
         if (_isScanning.value) return
         viewModelScope.launch {
@@ -127,14 +128,18 @@ data class SettingsUiState(
     val isLoading: Boolean = true,
     val storageUri: String? = null,
     val storageUsageBytes: Long = 0,
-    val trackCount: Int = 0
+    val trackCount: Int = 0,
+    val isCreatingInvitation: Boolean = false,
+    val invitationToken: String? = null,
+    val invitationError: String? = null
 )
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val setStorageLocationUseCase: SetStorageLocationUseCase,
     private val getStorageInfoUseCase: GetStorageInfoUseCase,
-    private val getLibraryTracksUseCase: GetLibraryTracksUseCase
+    private val getLibraryTracksUseCase: GetLibraryTracksUseCase,
+    private val mixtapeApi: MixtapeApi
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -147,13 +152,13 @@ class SettingsViewModel @Inject constructor(
     private fun loadSettings() {
         viewModelScope.launch {
             val settings = getStorageInfoUseCase()
-            _uiState.update { 
+            _uiState.update {
                 it.copy(
                     isLoading = false,
                     storageUri = settings.storageUri
                 )
             }
-            
+
             getLibraryTracksUseCase().collect { tracks ->
                 _uiState.update { it.copy(trackCount = tracks.size) }
             }
@@ -166,7 +171,61 @@ class SettingsViewModel @Inject constructor(
             _uiState.update { it.copy(storageUri = uri.toString()) }
         }
     }
+    fun createInvitation() {
+        if (_uiState.value.isCreatingInvitation) return
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isCreatingInvitation = true,
+                    invitationError = null,
+                    invitationToken = null
+                )
+            }
+
+            try {
+                val response = mixtapeApi.createInvitation(
+                    CreateInvitationRequest(expiresInDays = 7)
+                )
+
+                if (response.isSuccessful) {
+                    val invitation = response.body()
+
+                    if (invitation?.token.isNullOrBlank()) {
+                        _uiState.update {
+                            it.copy(invitationError = "The server returned an invalid invitation.")
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(invitationToken = invitation!!.token)
+                        }
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            invitationError = when (response.code()) {
+                                401 -> "Your session expired. Please sign in again."
+                                403 -> "You are not allowed to create invitations."
+                                else -> "Couldn't create an invitation. Please try again."
+                            }
+                        )
+                    }
+                }
+
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        invitationError =
+                        "Couldn't reach the server. Check your internet connection."
+                    )
+                }
+            } finally {
+                _uiState.update { it.copy(isCreatingInvitation = false) }
+            }
+        }
+    }
 }
+
 
 data class ImportUiState(
     val storageUri: String? = null,
@@ -187,26 +246,26 @@ class ImportViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(ImportUiState())
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
-    
+
     private var currentJobId: String? = null
 
     init {
         viewModelScope.launch {
             val settings = getStorageInfoUseCase()
-            _uiState.update { 
+            _uiState.update {
                 it.copy(
                     storageUri = settings.storageUri,
                     isStorageConfigured = settings.storageUri != null
                 )
             }
         }
-        
+
         viewModelScope.launch {
             importJobRepository.observeAll().collect { jobs ->
                 val job = jobs.find { it.id == currentJobId }
                 if (job != null) {
                     _uiState.update { it.copy(currentJob = job, isImporting = false) }
-                    
+
                     if (job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED) {
                         viewModelScope.launch {
                             kotlinx.coroutines.delay(3000)
@@ -221,22 +280,22 @@ class ImportViewModel @Inject constructor(
             }
         }
     }
-    
+
     fun onUrlInputChanged(url: String) {
         _uiState.update { it.copy(urlInput = url, error = null) }
     }
-    
+
     fun startImport() {
         val url = _uiState.value.urlInput
         if (url.isBlank()) return
-        
+
         if (!_uiState.value.isStorageConfigured) {
             _uiState.update { it.copy(error = "Storage location not configured") }
             return
         }
-        
+
         _uiState.update { it.copy(isImporting = true, error = null) }
-        
+
         viewModelScope.launch {
             val result = importUrlUseCase(url)
             if (result.isSuccess) {
@@ -248,14 +307,14 @@ class ImportViewModel @Inject constructor(
             }
         }
     }
-    
+
     fun cancelImport(jobId: String) {
         viewModelScope.launch {
             cancelImportJobUseCase(jobId)
             clearCurrentJob()
         }
     }
-    
+
     fun clearCurrentJob() {
         currentJobId = null
         _uiState.update { it.copy(currentJob = null) }

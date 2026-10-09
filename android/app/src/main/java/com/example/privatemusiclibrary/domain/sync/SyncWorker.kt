@@ -17,15 +17,21 @@ class SyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        try {
-            val success = syncUseCase()
-            if (success) {
-                Result.success()
-            } else {
-                Result.retry()
-            }
+        val outcome = try {
+            syncUseCase()
         } catch (e: Exception) {
-            Result.retry()
+            SyncUseCase.Outcome.RETRYABLE_FAILURE
         }
+        when (outcome) {
+            SyncUseCase.Outcome.SUCCESS -> Result.success()
+            // Not signed in / rejected: retrying won't help. Local data is untouched.
+            SyncUseCase.Outcome.PERMANENT_FAILURE -> Result.failure()
+            SyncUseCase.Outcome.RETRYABLE_FAILURE ->
+                if (runAttemptCount + 1 >= MAX_ATTEMPTS) Result.failure() else Result.retry()
+        }
+    }
+
+    companion object {
+        const val MAX_ATTEMPTS = 5
     }
 }

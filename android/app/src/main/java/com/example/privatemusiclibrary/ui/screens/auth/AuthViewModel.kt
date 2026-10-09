@@ -61,11 +61,13 @@ class AuthViewModel @Inject constructor(
                     val tokens = res.body()!!
                     tokenStore.save(tokens.accessToken, tokens.refreshToken)
                     _authState.value = AuthState.Authenticated
+                } else if (res.code() >= 500) {
+                    _uiError.value = "Mixtape server is temporarily unavailable. Your local library still works."
                 } else {
                     _uiError.value = "Invalid email or password"
                 }
             } catch (e: Exception) {
-                _uiError.value = "Network error. (${e.message}) Please try again."
+                _uiError.value = networkErrorMessage(e)
             } finally {
                 _isLoading.value = false
             }
@@ -111,12 +113,14 @@ class AuthViewModel @Inject constructor(
                         }
                     } else if (res.code() == 409) {
                         _uiError.value = "Email is already registered."
+                    } else if (res.code() >= 500) {
+                        _uiError.value = "Mixtape server is temporarily unavailable. Please try again later."
                     } else {
                         _uiError.value = "Registration failed. Please check your details."
                     }
                 }
             } catch (e: Exception) {
-                _uiError.value = "Network error. (${e.message}) Please try again."
+                _uiError.value = networkErrorMessage(e)
             } finally {
                 _isLoading.value = false
             }
@@ -141,5 +145,14 @@ class AuthViewModel @Inject constructor(
 
     fun setError(msg: String) {
         _uiError.value = msg
+    }
+
+    private fun networkErrorMessage(e: Exception): String = when (e) {
+        is java.net.UnknownHostException -> "No internet connection. Sign-in and registration need internet."
+        is java.net.SocketTimeoutException -> "The server took too long to respond. Please try again."
+        is java.net.ConnectException -> "Couldn't reach the Mixtape server. Please try again."
+        is javax.net.ssl.SSLException -> "Secure connection failed. Check your network and try again."
+        is java.io.IOException -> "Network error. Please check your connection and try again."
+        else -> "Something went wrong. Please try again."
     }
 }

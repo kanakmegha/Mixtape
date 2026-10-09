@@ -27,7 +27,8 @@ class MainActivity : ComponentActivity() {
   lateinit var scanLocalAudioUseCase: ScanLocalAudioUseCase
 
     private val _sharedUrl = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
-
+    private val _invitationToken =
+    kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleIntent(intent)
@@ -51,7 +52,8 @@ class MainActivity : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { 
                     MainNavigation(
                         sharedUrl = sharedUrl,
-                        onSharedUrlHandled = { _sharedUrl.value = null }
+                        onSharedUrlHandled = { _sharedUrl.value = null },
+                        invitationToken = _invitationToken.collectAsState().value
                     ) 
                 } 
             }
@@ -63,14 +65,34 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
-    private fun handleIntent(intent: android.content.Intent) {
-        if (intent.action == android.content.Intent.ACTION_SEND && intent.type == "text/plain") {
-            val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)
-            if (text != null) {
-                val urlRegex = "(https?://[\\w-]+(\\.[\\w-]+)+(/[^\\s]*)?)".toRegex()
-                val match = urlRegex.find(text)
-                if (match != null) {
-                    _sharedUrl.value = match.value
+    private fun handleIntent(intent: android.content.Intent?) {
+        if (intent == null) return
+
+        when (intent.action) {
+            android.content.Intent.ACTION_VIEW -> {
+                val uri = intent.data ?: return
+
+            if (uri.scheme == "https" &&
+                uri.host == "YOUR-DOWNLOAD-DOMAIN" &&
+                uri.path == "/invite"
+            ) {
+                _invitationToken.value =
+                    uri.getQueryParameter("token")?.takeIf { it.isNotBlank() }
+            }
+        }
+
+            android.content.Intent.ACTION_SEND -> {
+                if (intent.type == "text/plain") {
+                    val text = intent.getStringExtra(
+                        android.content.Intent.EXTRA_TEXT
+                    )
+                    val urlRegex =
+                        "(https?://[^\\s]+)".toRegex()
+                    val match = text?.let { urlRegex.find(it) }
+
+                    if (match != null) {
+                        _sharedUrl.value = match.value
+                    }
                 }
             }
         }

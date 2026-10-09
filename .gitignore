@@ -45,3 +45,32 @@ redis-data/
 *.aac
 *.flac
 *.ogg
+
+# Release signing config (never commit)
+keystore.properties
+**/keystore.properties
+release-keys/
+
+# Private keys and certificates
+*.pem
+*.key
+
+# Local configuration and credentials
+credentials.json
+secrets.json
+service-account*.json
+
+# IDE and OS metadata
+.vscode/
+.DS_Store
+
+# Android build configuration
+android/local.properties
+
+# Environment files in nested directories
+**/.env
+**/.env.*
+!**/.env.example
+# Compiled backend executables
+/backend/api
+/backend/api_bin

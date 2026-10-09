@@ -95,7 +95,11 @@ object NetworkModule {
                         }
                     }
 
-                    if (result != null && result.isSuccessful) {
+                    // Network failure (offline/DNS/timeout): keep the session so the
+                    // local library stays usable; just fail this request.
+                    if (result == null) return@synchronized null
+
+                    if (result.isSuccessful) {
                         result.body()?.let {
                             tokenStore.save(it.accessToken, it.refreshToken)
                             return@synchronized response.request.newBuilder()
@@ -104,8 +108,10 @@ object NetworkModule {
                         }
                     }
 
-                    // Refresh failed, clear session
-                    tokenStore.clear()
+                    // Only clear on a definitive auth rejection, not on server outages.
+                    if (result.code() == 401 || result.code() == 403) {
+                        tokenStore.clear()
+                    }
                     null
                 }
             }
@@ -118,16 +124,20 @@ object NetworkModule {
         authInterceptor: Interceptor,
         authenticator: Authenticator
     ): OkHttpClient {
-        val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+        val builder = OkHttpClient.Builder()
+        // Never log request/response bodies (passwords, tokens) in release builds.
+        if (com.example.privatemusiclibrary.BuildConfig.DEBUG) {
+            builder.addInterceptor(HttpLoggingInterceptor().apply {
+                level = HttpLoggingInterceptor.Level.BODY
+            })
         }
-        
-        return OkHttpClient.Builder()
-            .addInterceptor(logging)
+        return builder
             .addInterceptor(authInterceptor)
             .authenticator(authenticator)
-            .connectTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(45, TimeUnit.SECONDS)
             .build()
     }
 

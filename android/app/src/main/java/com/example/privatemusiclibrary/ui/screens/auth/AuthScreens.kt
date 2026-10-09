@@ -107,9 +107,12 @@ fun LoginScreen(
 @Composable
 fun RegisterScreen(
     viewModel: AuthViewModel,
-    onNavigateToLogin: () -> Unit
+    onNavigateToLogin: () -> Unit,
+    initialInvitationToken: String = ""
 ) {
-    var token by remember { mutableStateOf("") }
+    var token by remember(initialInvitationToken) {
+    mutableStateOf(initialInvitationToken)
+}
     var email by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }

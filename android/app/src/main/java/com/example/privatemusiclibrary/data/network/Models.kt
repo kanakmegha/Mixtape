@@ -47,3 +47,12 @@ data class PlaylistTrackSyncPayload(
     @SerializedName("track_id") val trackId: String,
     val position: Int
 )
+data class CreateInvitationRequest(
+    @SerializedName("expires_in_days")
+    val expiresInDays: Int = 7
+)
+
+data class InvitationResponse(
+    val id: String,
+    val token: String
+)

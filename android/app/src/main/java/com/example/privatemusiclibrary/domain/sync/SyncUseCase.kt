@@ -15,8 +15,18 @@ class SyncUseCase @Inject constructor(
     private val playlistTrackDao: PlaylistTrackDao,
     private val tokenStore: AuthTokenStore
 ) {
-    suspend operator fun invoke(): Boolean {
-        if (tokenStore.getAccessToken() == null) return false
+    enum class Outcome { SUCCESS, RETRYABLE_FAILURE, PERMANENT_FAILURE }
+
+    private fun classify(code: Int): Outcome = when {
+        code == 401 || code == 403 -> Outcome.PERMANENT_FAILURE
+        code == 408 || code == 429 || code >= 500 -> Outcome.RETRYABLE_FAILURE
+        else -> Outcome.PERMANENT_FAILURE
+    }
+
+    // Push-only and idempotent: payloads are keyed by stable local IDs, and this
+    // method never deletes or modifies local Room data.
+    suspend operator fun invoke(): Outcome {
+        if (tokenStore.getAccessToken() == null) return Outcome.PERMANENT_FAILURE
 
         return try {
             val localTracks = trackDao.getAll()
@@ -35,9 +45,7 @@ class SyncUseCase @Inject constructor(
             }
 
             val tracksRes = api.syncTracks(trackPayloads)
-            if (tracksRes.isSuccessful && tracksRes.body() != null) {
-                // Synced tracks down. Do nothing for now in local-first since we don't have audio
-            }
+            if (!tracksRes.isSuccessful) return classify(tracksRes.code())
 
             // 2. Playlists
             val localPlaylists = playlistDao.observeAll().first()
@@ -53,12 +61,14 @@ class SyncUseCase @Inject constructor(
                 )
             }
 
-            api.syncPlaylists(playlistPayloads)
-            
-            true
+            val playlistsRes = api.syncPlaylists(playlistPayloads)
+            if (!playlistsRes.isSuccessful) return classify(playlistsRes.code())
+
+            Outcome.SUCCESS
+        } catch (e: java.io.IOException) {
+            Outcome.RETRYABLE_FAILURE
         } catch (e: Exception) {
-            e.printStackTrace()
-            false
+            Outcome.PERMANENT_FAILURE
         }
     }
 }

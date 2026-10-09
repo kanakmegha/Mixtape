@@ -120,7 +120,7 @@ fun HomeScreen(
                                 var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                                 TrackCard(
                                     track = track,
-                                    onClick = { 
+                                    onClick = {
                                         playerViewModel.playQueue(listOf(track), 0)
                                         onNavigateToPlayer()
                                     },
@@ -151,8 +151,8 @@ fun HomeScreen(
                             items(state.favorites) { track ->
                                 var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
                                 TrackCard(
-                                    track = track, 
-                                    onClick = { 
+                                    track = track,
+                                    onClick = {
                                         playerViewModel.playQueue(listOf(track), 0)
                                         onNavigateToPlayer()
                                     },
@@ -178,7 +178,7 @@ fun HomeScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackCard(
-    track: Track, 
+    track: Track,
     onClick: () -> Unit = {},
     onAddToPlaylist: () -> Unit,
     onRename: (String) -> Unit,
@@ -246,7 +246,7 @@ fun LibraryScreen(
         topBar = {
             val searchQuery by viewModel.searchQuery.collectAsState()
             var isSearchActive by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-            
+
             if (isSearchActive) {
                 TopAppBar(
                     title = {
@@ -257,9 +257,9 @@ fun LibraryScreen(
                             placeholder = { Text("Search title or artist...") },
                             singleLine = true,
                             trailingIcon = {
-                                IconButton(onClick = { 
+                                IconButton(onClick = {
                                     viewModel.updateSearchQuery("")
-                                    isSearchActive = false 
+                                    isSearchActive = false
                                 }) {
                                     Icon(Icons.Default.Close, contentDescription = "Clear")
                                 }
@@ -340,7 +340,7 @@ fun LibraryScreen(
                     ) {
                         itemsIndexed(currentState.tracks) { index, track ->
                             Card(
-                                onClick = { 
+                                onClick = {
                                     playerViewModel.playQueue(listOf(track), 0)
                                     onNavigateToPlayer()
                                 },
@@ -381,7 +381,7 @@ fun LibraryScreen(
                                         )
                                     }
                                     var showAddToPlaylist by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-                                    
+
                                     com.example.privatemusiclibrary.ui.components.TrackActionMenu(
                                         track = track,
                                         onPlay = {
@@ -392,7 +392,7 @@ fun LibraryScreen(
                                         onRename = { newName -> playerViewModel.renameTrack(track, newName) },
                                         onDelete = { playerViewModel.deleteTrack(track) }
                                     )
-                                    
+
                                     if (showAddToPlaylist) {
                                         com.example.privatemusiclibrary.ui.screens.AddToPlaylistBottomSheet(
                                             trackId = track.id,
@@ -439,7 +439,7 @@ fun ImportScreen(
                 .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            
+
             if (!state.isStorageConfigured) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
@@ -481,7 +481,7 @@ fun ImportScreen(
                             enabled = !state.isImporting,
                             shape = MaterialTheme.shapes.medium
                         )
-                        
+
                         if (state.error != null) {
                             Text(
                                 text = state.error!!,
@@ -489,7 +489,7 @@ fun ImportScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        
+
                         Button(
                             onClick = { viewModel.startImport() },
                             modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -517,15 +517,15 @@ fun ImportScreen(
                     }
                 }
             }
-            
+
             state.currentJob?.let { job ->
                 val isError = job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.FAILED
                 val isComplete = job.status == com.example.privatemusiclibrary.domain.model.ImportJobStatus.COMPLETED
-                
+
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isError) MaterialTheme.colorScheme.errorContainer 
+                        containerColor = if (isError) MaterialTheme.colorScheme.errorContainer
                         else if (isComplete) MaterialTheme.colorScheme.primaryContainer
                         else MaterialTheme.colorScheme.surface
                     ),
@@ -551,26 +551,26 @@ fun ImportScreen(
                                     color = if (isError) MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            
+
                             if (isComplete) {
                                 Icon(
-                                    Icons.Default.CheckCircle, 
+                                    Icons.Default.CheckCircle,
                                     contentDescription = "Completed",
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(32.dp)
                                 )
                             } else if (isError) {
                                 Icon(
-                                    Icons.Default.Error, 
+                                    Icons.Default.Error,
                                     contentDescription = "Failed",
                                     tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(32.dp)
                                 )
                             }
                         }
-                        
+
                         Spacer(modifier = Modifier.height(16.dp))
-                        
+
                         if (!isComplete && !isError && job.status != com.example.privatemusiclibrary.domain.model.ImportJobStatus.CANCELLED) {
                             LinearProgressIndicator(
                                 progress = if (job.progress > 0) job.progress / 100f else 0f,
@@ -601,7 +601,7 @@ fun ImportScreen(
                                 }
                             }
                         }
-                        
+
                         if (isError) {
                             if (job.errorMessage != null) {
                                 Text(
@@ -611,7 +611,7 @@ fun ImportScreen(
                                     modifier = Modifier.padding(top = 8.dp)
                                 )
                             }
-                            
+
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                                 horizontalArrangement = Arrangement.End
@@ -620,10 +620,10 @@ fun ImportScreen(
                                     Text("Dismiss")
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
-                                TextButton(onClick = { 
+                                TextButton(onClick = {
                                     viewModel.clearCurrentJob()
                                     viewModel.onUrlInputChanged(job.sourceUrl)
-                                    viewModel.startImport() 
+                                    viewModel.startImport()
                                 }) {
                                     Text("Retry")
                                 }
@@ -641,7 +641,7 @@ fun ImportScreen(
 fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel: com.example.privatemusiclibrary.ui.screens.auth.AuthViewModel? = null) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
-    
+
     val documentTreeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
         onResult = { uri: Uri? ->
@@ -668,7 +668,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
         ) {
             item {
                 SettingsSectionHeader("Storage")
-                
+
                 if (state.storageUri == null) {
                     SettingsItem(
                         icon = Icons.Default.FolderOff,
@@ -691,7 +691,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     )
                 }
             }
-            
+
             item {
                 SettingsSectionHeader("Playback")
                 SettingsItem(
@@ -702,9 +702,74 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     enabled = false
                 )
             }
-            
+
+
+            item {
+                SettingsSectionHeader("Invite Friends")
+
+                SettingsItem(
+                    icon = Icons.Default.PersonAdd,
+                    title = "Create Invitation",
+                    subtitle = "Invite someone to join Mixtape",
+                    onClick = { viewModel.createInvitation() },
+                    enabled = !state.isCreatingInvitation
+                )
+
+                if (state.isCreatingInvitation) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Creating invitation...")
+                    }
+                }
+
+                state.invitationError?.let { error ->
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+
+                state.invitationToken?.let { token ->
+                    SettingsItem(
+                        icon = Icons.Default.Share,
+                        title = "Share Invitation Code",
+                        subtitle = "Tap to share your invitation",
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "You're invited to join Mixtape!\n\n" +
+                                        "Invitation code: $token\n\n" +
+                                        "Install Mixtape and enter this code when creating your account."
+                                )
+                            }
+
+                            context.startActivity(
+                                Intent.createChooser(
+                                    shareIntent,
+                                    "Invite someone to Mixtape"
+                                )
+                            )
+                        }
+                    )
+                }
+            }
+
+
             item {
                 SettingsSectionHeader("Account")
+
                 SettingsItem(
                     icon = Icons.Default.Person,
                     title = "Sign Out",
@@ -712,7 +777,8 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     onClick = { authViewModel?.logout() }
                 )
             }
-            
+
+
             item {
                 SettingsSectionHeader("About")
                 SettingsItem(

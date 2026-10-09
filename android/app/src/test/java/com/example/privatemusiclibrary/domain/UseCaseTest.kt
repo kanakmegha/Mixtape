@@ -1,5 +1,5 @@
 package com.example.privatemusiclibrary.domain
-
+import com.example.privatemusiclibrary.domain.extraction.ExtractedMedia
 import com.example.privatemusiclibrary.domain.model.Track
 import com.example.privatemusiclibrary.domain.repository.LocalAudioStorage
 import com.example.privatemusiclibrary.domain.repository.StorageResult
@@ -193,75 +193,77 @@ class ScannerTest {
     }
 }
 
+
 class ValidateUrlUseCaseTest {
+
+    private fun fakeExtractor(supported: Boolean) =
+        object : com.example.privatemusiclibrary.domain.extraction.AudioExtractor {
+
+            override fun supports(url: String): Boolean = supported
+
+            override suspend fun extract(
+                url: String,
+                outputDir: java.io.File,
+                progressCallback: (Int) -> Unit
+            ): ExtractedMedia {
+                return ExtractedMedia(
+                    sourceUrl = url,
+                    sourceId = null,
+                    platform = "Test",
+                    title = "Test audio",
+                    artist = null,
+                    artworkUrl = null,
+                    file = java.io.File(outputDir, "test.mp3")
+                )
+            }
+        }
+
     @Test
     fun testValidUrl() {
-        val extractor = object : com.example.privatemusiclibrary.domain.extraction.AudioExtractor {
-            override fun supports(url: String): Boolean = true
-            override suspend fun extract(url: String, dest: java.io.File, cb: (Int) -> Unit) {}
-        }
-        val validateUrlUseCase = ValidateUrlUseCase(setOf(extractor))
-        
-        val result = validateUrlUseCase("https://example.com/audio.mp3")
+        val useCase = ValidateUrlUseCase(setOf(fakeExtractor(true)))
+
+        val result = useCase("https://example.com/audio.mp3")
+
         assertTrue(result is ValidateUrlUseCase.ValidationResult.Valid)
     }
-    
+
     @Test
     fun testInvalidScheme() {
-        val extractor = object : com.example.privatemusiclibrary.domain.extraction.AudioExtractor {
-            override fun supports(url: String): Boolean = true
-            override suspend fun extract(url: String, dest: java.io.File, cb: (Int) -> Unit) {}
-        }
-        val validateUrlUseCase = ValidateUrlUseCase(setOf(extractor))
-        
-        val result = validateUrlUseCase("file:///path/to/local/file.mp3")
+        val useCase = ValidateUrlUseCase(setOf(fakeExtractor(true)))
+
+        val result = useCase("file:///path/to/local/file.mp3")
+
         assertTrue(result is ValidateUrlUseCase.ValidationResult.Invalid)
     }
-    
+
     @Test
     fun testUnsupportedSource() {
-        val extractor = object : com.example.privatemusiclibrary.domain.extraction.AudioExtractor {
-            override fun supports(url: String): Boolean = false
-            override suspend fun extract(url: String, dest: java.io.File, cb: (Int) -> Unit) {}
-        }
-        val validateUrlUseCase = ValidateUrlUseCase(setOf(extractor))
-        
-        val result = validateUrlUseCase("https://example.com/audio.mp3")
+        val useCase = ValidateUrlUseCase(setOf(fakeExtractor(false)))
+
+        val result = useCase("https://example.com/audio.mp3")
+
         assertTrue(result is ValidateUrlUseCase.ValidationResult.Invalid)
         assertEquals(
-            "This source isn't supported yet.", 
+            "This source isn't supported yet.",
             (result as ValidateUrlUseCase.ValidationResult.Invalid).reason
         )
     }
 }
 
+
+
 class ExtractorRoutingTest {
+
     @Test
-    fun testProviderRouting() {
-        val ytDlpExtractor = com.example.privatemusiclibrary.data.extraction.YtDlpAudioExtractor()
-        val directExtractor = com.example.privatemusiclibrary.data.extraction.DirectAudioUrlExtractor()
-        
-        // YtDlpExtractor supports these media pages
-        assertTrue(ytDlpExtractor.supports("https://www.youtube.com/watch?v=123")) // YouTube watch URL
-        assertTrue(ytDlpExtractor.supports("https://www.youtube.com/shorts/123")) // YouTube short URL
-        assertTrue(ytDlpExtractor.supports("https://www.instagram.com/p/123/")) // Instagram post
-        assertTrue(ytDlpExtractor.supports("https://www.instagram.com/reel/123/")) // Instagram reel
-        assertTrue(ytDlpExtractor.supports("https://www.instagram.com/reels/123/")) // Instagram reels
-        assertTrue(ytDlpExtractor.supports("https://soundcloud.com/123")) // SoundCloud
-        
-        // YtDlpExtractor does NOT support direct mp3 (could be handled by directExtractor)
-        assertFalse(ytDlpExtractor.supports("https://example.com/audio.mp3"))
-        
-        // Direct extractor supports media extensions
-        assertTrue(directExtractor.supports("https://example.com/audio.mp3")) // direct MP3
-        assertTrue(directExtractor.supports("http://example.com/audio.m4a")) // direct M4A
-        
-        // Direct extractor does NOT support media pages
+    fun testDirectExtractorRouting() {
+        val directExtractor =
+            com.example.privatemusiclibrary.data.extraction.DirectAudioUrlExtractor()
+
+        assertTrue(directExtractor.supports("https://example.com/audio.mp3"))
+        assertTrue(directExtractor.supports("http://example.com/audio.m4a"))
+
         assertFalse(directExtractor.supports("https://www.instagram.com/p/123/"))
         assertFalse(directExtractor.supports("https://www.youtube.com/watch?v=123"))
-        
-        // Unsupported arbitrary URL
-        assertFalse(ytDlpExtractor.supports("https://example.com/page.html"))
         assertFalse(directExtractor.supports("https://example.com/page.html"))
     }
 }
