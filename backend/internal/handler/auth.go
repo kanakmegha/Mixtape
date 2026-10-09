@@ -31,6 +31,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Email == "" || req.Password == "" || req.DisplayName == "" {
+		respondError(w, http.StatusBadRequest, "email, password, and display_name are required")
+		return
+	}
+	if len(req.Password) < 6 {
+		respondError(w, http.StatusBadRequest, "password must be at least 6 characters")
+		return
+	}
+
 	// Determine if this is the first user
 	var adminExists bool
 	err := h.db.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM users WHERE role = 'admin')").Scan(&adminExists)
@@ -47,8 +56,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		// If concurrent request creates an admin first, the unique index idx_users_single_admin will reject this insert.
 		role = "admin"
 	} else if req.InvitationToken == "" {
-		respondError(w, http.StatusForbidden, "invitation required")
-		return
+		if !h.cfg.AllowOpenRegistration {
+			respondError(w, http.StatusForbidden, "invitation required")
+			return
+		}
 	} else {
 		// 1. Verify invitation
 		var parsedInvID uuid.UUID

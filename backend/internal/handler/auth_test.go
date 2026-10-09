@@ -88,12 +88,12 @@ func TestSecondRegistrationWithoutInviteFails(t *testing.T) {
 	pool := setupTestDB(t)
 	defer pool.Close()
 
-	authHandler := handler.NewAuthHandler(pool, &config.Config{})
+	authHandler := handler.NewAuthHandler(pool, &config.Config{AllowOpenRegistration: false})
 
 	// 1. Create first user
 	pool.Exec(context.Background(), "INSERT INTO users (id, email, password_hash, display_name, role) VALUES ($1, 'admin@test.com', 'hash', 'admin', 'admin')", uuid.New())
 
-	// 2. Try to create second user without invite
+	// 2. Try to create second user without invite when open registration is disabled
 	reqBody := models.RegisterRequest{
 		Email:       "user@mixtape.local",
 		Password:    "password123",
@@ -108,6 +108,93 @@ func TestSecondRegistrationWithoutInviteFails(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("Expected 403 Forbidden, got %d", rr.Code)
+	}
+}
+
+func TestSecondRegistrationWithoutInviteSucceedsWhenOpenRegistrationEnabled(t *testing.T) {
+	pool := setupTestDB(t)
+	defer pool.Close()
+
+	authHandler := handler.NewAuthHandler(pool, &config.Config{AllowOpenRegistration: true})
+
+	// 1. Create first user
+	pool.Exec(context.Background(), "INSERT INTO users (id, email, password_hash, display_name, role) VALUES ($1, 'admin@test.com', 'hash', 'admin', 'admin')", uuid.New())
+
+	// 2. Create second user without invite when open registration is enabled
+	reqBody := models.RegisterRequest{
+		Email:       "openuser@mixtape.local",
+		Password:    "password123",
+		DisplayName: "Open User",
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(bodyBytes))
+	rr := httptest.NewRecorder()
+
+	authHandler.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Expected 201 Created, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var role string
+	err := pool.QueryRow(context.Background(), "SELECT role FROM users WHERE email = $1", "openuser@mixtape.local").Scan(&role)
+	if err != nil {
+		t.Fatalf("Failed to query role: %v", err)
+	}
+	if role != "user" {
+		t.Fatalf("Expected role 'user', got '%s'", role)
+	}
+}
+
+func TestRegistrationWithInvalidInputs(t *testing.T) {
+	pool := setupTestDB(t)
+	defer pool.Close()
+
+	authHandler := handler.NewAuthHandler(pool, &config.Config{AllowOpenRegistration: true})
+
+	reqBody := models.RegisterRequest{
+		Email:       "",
+		Password:    "123",
+		DisplayName: "",
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(bodyBytes))
+	rr := httptest.NewRecorder()
+
+	authHandler.Register(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("Expected 400 Bad Request, got %d", rr.Code)
+	}
+}
+
+func TestRegistrationDuplicateEmailFails(t *testing.T) {
+	pool := setupTestDB(t)
+	defer pool.Close()
+
+	authHandler := handler.NewAuthHandler(pool, &config.Config{AllowOpenRegistration: true})
+
+	reqBody := models.RegisterRequest{
+		Email:       "user@mixtape.local",
+		Password:    "password123",
+		DisplayName: "User",
+	}
+	bodyBytes, _ := json.Marshal(reqBody)
+
+	req1 := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(bodyBytes))
+	rr1 := httptest.NewRecorder()
+	authHandler.Register(rr1, req1)
+	if rr1.Code != http.StatusCreated {
+		t.Fatalf("Expected 201 Created, got %d", rr1.Code)
+	}
+
+	req2 := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(bodyBytes))
+	rr2 := httptest.NewRecorder()
+	authHandler.Register(rr2, req2)
+	if rr2.Code != http.StatusConflict {
+		t.Fatalf("Expected 409 Conflict, got %d", rr2.Code)
 	}
 }
 

@@ -19,6 +19,7 @@ type Config struct {
 	AccessTokenSecret   string
 	RefreshTokenSecret  string
 	CORSAllowedOrigins  []string
+	AllowOpenRegistration bool
 }
 
 func Load() *Config {
@@ -49,17 +50,25 @@ func Load() *Config {
         origins = []string{corsOrigin}
     }
 
+	// Registration mode: defaults to open registration (true)
+	allowOpenRegStr := getEnv("ALLOW_OPEN_REGISTRATION", "true")
+	allowOpenReg, err := strconv.ParseBool(allowOpenRegStr)
+	if err != nil {
+		allowOpenReg = true
+	}
+
 	return &Config{
-		Port:               port,
-		AppEnv:             env,
-		DatabaseURL:        dbURL,
-		DBMaxOpenConns:     maxOpen,
-		DBMaxIdleConns:     maxIdle,
-		DBConnMaxLifetime:  time.Duration(maxLifetimeMinutes) * time.Minute,
-		DBConnMaxIdleTime:  time.Duration(maxIdleTimeMinutes) * time.Minute,
-		AccessTokenSecret:  atSecret,
-		RefreshTokenSecret: rtSecret,
-		CORSAllowedOrigins: origins,
+		Port:                  port,
+		AppEnv:                env,
+		DatabaseURL:           dbURL,
+		DBMaxOpenConns:        maxOpen,
+		DBMaxIdleConns:        maxIdle,
+		DBConnMaxLifetime:     time.Duration(maxLifetimeMinutes) * time.Minute,
+		DBConnMaxIdleTime:     time.Duration(maxIdleTimeMinutes) * time.Minute,
+		AccessTokenSecret:     atSecret,
+		RefreshTokenSecret:    rtSecret,
+		CORSAllowedOrigins:    origins,
+		AllowOpenRegistration: allowOpenReg,
 	}
 }
 
