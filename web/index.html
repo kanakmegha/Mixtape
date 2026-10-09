@@ -1,158 +1,95 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#101010" />
-  <meta
-    name="description"
-    content="You've been invited to Mixtape, your private music library."
-  />
+  <meta name="description" content="You've been invited to Mixtape, your private music library." />
   <title>You're invited to Mixtape</title>
-
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
+    * { box-sizing: border-box; }
     body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      padding: 24px;
-      background:
-        radial-gradient(ellipse at top, #28213a 0%, transparent 55%),
-        #101010;
-      color: #f8f7fb;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
+      background: radial-gradient(ellipse at top, #28213a 0%, transparent 55%), #101010;
+      color: #f8f7fb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-
     .card {
-      width: 100%;
-      max-width: 460px;
-      padding: 36px 28px;
-      border: 1px solid #393440;
-      border-radius: 24px;
-      background: rgba(25, 23, 30, 0.94);
-      text-align: center;
+      width: 100%; max-width: 460px; padding: 36px 28px; border: 1px solid #393440;
+      border-radius: 24px; background: rgba(25, 23, 30, 0.94); text-align: center;
     }
-
     .logo {
-      width: 66px;
-      height: 66px;
-      margin: 0 auto 22px;
-      display: grid;
-      place-items: center;
-      border-radius: 20px;
-      background: #c4f06a;
-      color: #171717;
-      font-size: 30px;
-      font-weight: 800;
+      width: 66px; height: 66px; margin: 0 auto 22px; display: grid; place-items: center;
+      border-radius: 20px; background: #c4f06a; color: #171717; font-size: 30px; font-weight: 800;
     }
-
-    h1 {
-      margin: 0 0 14px;
-      font-size: 32px;
-      letter-spacing: -1px;
-    }
-
-    p {
-      color: #bcb7c5;
-      line-height: 1.65;
-    }
-
+    h1 { margin: 0 0 14px; font-size: 32px; letter-spacing: -1px; }
+    p { color: #bcb7c5; line-height: 1.65; }
     .token {
-      margin: 24px 0;
-      padding: 14px;
-      overflow-wrap: anywhere;
-      border: 1px solid #45404c;
-      border-radius: 12px;
-      color: #c4f06a;
-      font-size: 13px;
-      letter-spacing: 1px;
+      margin: 24px 0; padding: 14px; overflow-wrap: anywhere; border: 1px solid #45404c;
+      border-radius: 12px; color: #c4f06a; font-size: 13px; letter-spacing: 1px;
     }
-
     .button {
-      display: block;
-      width: 100%;
-      margin-top: 12px;
-      padding: 15px 18px;
-      border: 0;
-      border-radius: 12px;
-      background: #c4f06a;
-      color: #171717;
-      font-size: 16px;
-      font-weight: 700;
-      text-decoration: none;
-      cursor: pointer;
+      display: block; width: 100%; margin-top: 12px; padding: 15px 18px; border: 0;
+      border-radius: 12px; background: #c4f06a; color: #171717; font-size: 16px;
+      font-weight: 700; text-decoration: none; cursor: pointer;
     }
-
-    .secondary {
-      border: 1px solid #45404c;
-      background: transparent;
-      color: #f8f7fb;
-    }
-
-    .notice {
-      margin-top: 24px;
-      font-size: 12px;
-    }
+    .secondary { border: 1px solid #45404c; background: transparent; color: #f8f7fb; }
+    .notice { margin-top: 24px; font-size: 12px; }
+    [hidden] { display: none !important; }
   </style>
 </head>
-
 <body>
   <main class="card">
     <div class="logo" aria-label="Mixtape logo">M</div>
-
     <h1>You're invited.</h1>
-
-    <p>
-      Welcome to Mixtape, your private space for the music you love.
-      Accept your invitation to create your account and build your library.
-    </p>
-
+    <p>Welcome to Mixtape, your private space for the music you love. Accept your invitation to create your account and build your library.</p>
     <div id="token" class="token" hidden></div>
-
     <a id="openApp" class="button" href="#">Open Mixtape</a>
-
-    <a
-      id="download"
-      class="button secondary"
-      href="#"
-      hidden
-    >Download Mixtape for Android</a>
-
-    <p id="status" class="notice">
-      Your invitation is ready.
-    </p>
+    <a id="download" class="button secondary" href="#" hidden>Download Mixtape for Android</a>
+    <p id="status" class="notice">Your invitation is ready.</p>
   </main>
 
+  <!-- Load the configuration before the landing-page logic below. -->
+  <script src="/config.js"></script>
   <script>
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
+    (() => {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+      const tokenElement = document.getElementById("token");
+      const openApp = document.getElementById("openApp");
+      const download = document.getElementById("download");
+      const status = document.getElementById("status");
+      const config = window.MIXTAPE_CONFIG || {};
+      const apkDownloadUrl = typeof config.apkDownloadUrl === "string"
+        ? config.apkDownloadUrl.trim()
+        : "";
 
-    const tokenElement = document.getElementById("token");
-    const openApp = document.getElementById("openApp");
-    const download = document.getElementById("download");
-    const status = document.getElementById("status");
+      if (token) {
+        tokenElement.hidden = false;
+        tokenElement.textContent = "Invitation code: " + token;
+        // Open the installed app using the custom scheme registered in AndroidManifest.xml.
+        openApp.href = "mixtape://invite?token=" + encodeURIComponent(token);
+        openApp.addEventListener("click", () => {
+          status.textContent = "Opening Mixtape… If it doesn't open, install the app first.";
+        });
+      } else {
+        openApp.hidden = true;
+        status.textContent = "This invitation link is missing its token. Ask your inviter for a new link.";
+      }
 
-    if (!token) {
-      openApp.hidden = true;
-      status.textContent =
-        "This invitation link is missing its token. Ask your inviter for a new link.";
-    } else {
-      tokenElement.hidden = false;
-      tokenElement.textContent = "Invitation code: " + token;
-
-      // This deep link will be connected to the Android app in the next step.
-      openApp.href =
-        "https://mixtape.app/invite?token=" + encodeURIComponent(token);
-
-      // Configure the real APK download URL after choosing its hosting location.
-      download.hidden = true;
-    }
+      if (apkDownloadUrl && /^https:\/\//i.test(apkDownloadUrl)) {
+        download.href = apkDownloadUrl;
+        download.hidden = false;
+        download.setAttribute("download", "Mixtape.apk");
+        download.addEventListener("click", () => {
+          status.textContent = "Your download is starting. Open Mixtape.apk after it finishes to install the app.";
+        });
+      } else {
+        download.hidden = true;
+        if (token) {
+          status.textContent = "Your invitation is ready, but the Android download is not configured yet.";
+        }
+      }
+    })();
   </script>
 </body>
 </html>
