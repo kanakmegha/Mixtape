@@ -9,3 +9,6 @@
 -keepclasseswithmembernames,includedescriptorclasses class * {
     native <methods>;
 }
+# Preserve Apache Commons Compress classes used by yt-dlp
+# to prevent R8 from breaking runtime class discovery.
+-keep class org.apache.commons.compress.** { *; }

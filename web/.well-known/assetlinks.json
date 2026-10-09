@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.example.privatemusiclibrary",
+      "sha256_cert_fingerprints": [
+        "47:22:E8:7F:56:80:DE:5A:CB:28:C1:51:F4:B1:CF:74:A5:B4:F4:98:2E:16:BF:EA:9C:D5:F7:43:89:4B:57:02"
+      ]
+    }
+  }
+]

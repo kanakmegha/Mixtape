@@ -27,6 +27,37 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
+            <!-- Invitation App Link: https://mixtape-web-eight.vercel.app/?token=... -->
+            
+<!-- Verified HTTPS invitation links: landing page root -->
+            <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="https"
+                android:host="mixtape-web-eight.vercel.app"
+                android:path="/" />
+            </intent-filter>
+
+            <!-- Verified HTTPS invitation links: /invite path -->
+            <intent-filter android:autoVerify="true">
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data
+                android:scheme="https"
+                android:host="mixtape-web-eight.vercel.app"
+                android:pathPrefix="/invite" />
+            </intent-filter>
+
+            <!-- Fallback used by the landing page "Open Mixtape" button: mixtape://invite?token=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mixtape" android:host="invite" />
+            </intent-filter>
         </activity>
 
         <service

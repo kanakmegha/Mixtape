@@ -71,15 +71,16 @@ class MainActivity : ComponentActivity() {
         when (intent.action) {
             android.content.Intent.ACTION_VIEW -> {
                 val uri = intent.data ?: return
-
-            if (uri.scheme == "https" &&
-                uri.host == "YOUR-DOWNLOAD-DOMAIN" &&
-                uri.path == "/invite"
-            ) {
-                _invitationToken.value =
-                    uri.getQueryParameter("token")?.takeIf { it.isNotBlank() }
+                val token = com.example.privatemusiclibrary.ui.navigation.InviteLinkParser.parse(
+                    scheme = uri.scheme,
+                    host = uri.host,
+                    path = uri.path,
+                    token = runCatching { uri.getQueryParameter("token") }.getOrNull()
+                )
+                if (token != null) {
+                    _invitationToken.value = token
+                }
             }
-        }
 
             android.content.Intent.ACTION_SEND -> {
                 if (intent.type == "text/plain") {

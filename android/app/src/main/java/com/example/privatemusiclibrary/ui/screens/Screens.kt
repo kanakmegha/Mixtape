@@ -739,20 +739,29 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     )
                 }
 
+                
                 state.invitationToken?.let { token ->
                     SettingsItem(
                         icon = Icons.Default.Share,
-                        title = "Share Invitation Code",
-                        subtitle = "Tap to share your invitation",
+                        title = "Share Invitation",
+                        subtitle = "Tap to share your invitation link",
                         onClick = {
+                            val invitationUrl =
+                                "https://mixtape-web-eight.vercel.app/?token=${Uri.encode(token)}"
+
+                            val shareMessage = """
+                                You're invited to join Mixtape! 🎵
+
+                                Open this link to view your invitation and get started:
+                                $invitationUrl
+
+                                If the link doesn't work, enter this invitation code when registering:
+                                $token
+                                """.trimIndent()
+
                             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "You're invited to join Mixtape!\n\n" +
-                                        "Invitation code: $token\n\n" +
-                                        "Install Mixtape and enter this code when creating your account."
-                                )
+                                putExtra(Intent.EXTRA_TEXT, shareMessage)
                             }
 
                             context.startActivity(
@@ -765,6 +774,9 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel(), authViewModel
                     )
                 }
             }
+        
+    
+
 
 
             item {

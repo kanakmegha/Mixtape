@@ -50,24 +50,34 @@ class AuthViewModel @Inject constructor(
         }
     }
 
+    private suspend fun performLogin(email: String, pass: String): Boolean {
+        return try {
+            val req = LoginRequest(email, pass, "Android", "Android")
+            val res = api.login(req)
+            if (res.isSuccessful && res.body() != null) {
+                val tokens = res.body()!!
+                tokenStore.save(tokens.accessToken, tokens.refreshToken)
+                _authState.value = AuthState.Authenticated
+                true
+            } else if (res.code() >= 500) {
+                _uiError.value = "Mixtape server is temporarily unavailable. Your local library still works."
+                false
+            } else {
+                _uiError.value = "Invalid email or password"
+                false
+            }
+        } catch (e: Exception) {
+            _uiError.value = networkErrorMessage(e)
+            false
+        }
+    }
+
     fun login(email: String, pass: String) {
         viewModelScope.launch {
             _isLoading.value = true
             _uiError.value = null
             try {
-                val req = LoginRequest(email, pass, "Android", "Android")
-                val res = api.login(req)
-                if (res.isSuccessful && res.body() != null) {
-                    val tokens = res.body()!!
-                    tokenStore.save(tokens.accessToken, tokens.refreshToken)
-                    _authState.value = AuthState.Authenticated
-                } else if (res.code() >= 500) {
-                    _uiError.value = "Mixtape server is temporarily unavailable. Your local library still works."
-                } else {
-                    _uiError.value = "Invalid email or password"
-                }
-            } catch (e: Exception) {
-                _uiError.value = networkErrorMessage(e)
+                performLogin(email, pass)
             } finally {
                 _isLoading.value = false
             }
@@ -95,7 +105,10 @@ class AuthViewModel @Inject constructor(
                 val req = RegisterRequest(email, pass, name, inviteToken)
                 val res = api.register(req)
                 if (res.isSuccessful) {
-                    login(email, pass)
+                    val loginSuccess = performLogin(email, pass)
+                    if (!loginSuccess && _uiError.value == null) {
+                        _uiError.value = "Account created successfully, but automatic sign-in failed. Please sign in with your password."
+                    }
                 } else {
                     val errStr = res.errorBody()?.string() ?: ""
                     if (res.code() == 403) {

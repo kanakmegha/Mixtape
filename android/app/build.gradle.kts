@@ -167,4 +167,6 @@ dependencies {
   implementation("com.squareup.retrofit2:converter-gson:2.11.0")
   implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
   implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
+  // XZ compression support required by Apache Commons Compress
+  implementation("org.tukaani:xz:1.10")
 }

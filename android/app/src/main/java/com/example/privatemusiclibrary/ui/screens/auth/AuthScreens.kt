@@ -98,7 +98,7 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         TextButton(onClick = onNavigateToRegister) {
-            Text("Have an invite? Create Account", color = Color.LightGray)
+            Text("Don't have an account? Create Account", color = Color.LightGray)
         }
     }
 }
@@ -143,6 +143,14 @@ fun RegisterScreen(
         }
 
         val requireInvitation by viewModel.requireInvitation.collectAsState()
+
+        if (initialInvitationToken.isNotBlank() && !requireInvitation) {
+            Text(
+                text = "✓ Invitation link recognized — no code needed.",
+                color = Color(0xFFC4F06A),
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
 
         if (requireInvitation) {
             OutlinedTextField(
