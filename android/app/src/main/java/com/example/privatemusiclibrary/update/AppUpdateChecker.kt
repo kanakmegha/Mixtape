@@ -114,11 +114,10 @@ object AppUpdateDownloader {
             setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             setAllowedOverMetered(true)
             setAllowedOverRoaming(false)
-            // Use app-specific external Downloads storage for compatibility with modern
-            // scoped-storage rules. The Download Manager completion notification can open
-            // the downloaded APK for the user to confirm installation.
-            setDestinationInExternalFilesDir(
-                context.applicationContext,
+            // Save to the public Downloads folder so users can find the APK if they
+            // dismiss the Download Manager notification. DownloadManager supports known
+            // public directories such as DIRECTORY_DOWNLOADS on modern Android.
+            setDestinationInExternalPublicDir(
                 Environment.DIRECTORY_DOWNLOADS,
                 "Mixtape-${update.versionName}.apk"
             )
