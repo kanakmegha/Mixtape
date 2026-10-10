@@ -125,12 +125,18 @@ object NetworkModule {
         authenticator: Authenticator
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
-        // Never log request/response bodies (passwords, tokens) in release builds.
-        if (com.example.privatemusiclibrary.BuildConfig.DEBUG) {
-            builder.addInterceptor(HttpLoggingInterceptor().apply {
-                level = HttpLoggingInterceptor.Level.BODY
-            })
+        // Safe logging: redact Authorization headers and avoid logging request/response bodies containing secrets.
+        val loggingInterceptor = HttpLoggingInterceptor { message ->
+            android.util.Log.d("MixtapeHttp", message)
+        }.apply {
+            redactHeader("Authorization")
+            level = if (com.example.privatemusiclibrary.BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.HEADERS
+            } else {
+                HttpLoggingInterceptor.Level.BASIC
+            }
         }
+        builder.addInterceptor(loggingInterceptor)
         return builder
             .addInterceptor(authInterceptor)
             .authenticator(authenticator)

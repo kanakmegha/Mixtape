@@ -442,3 +442,78 @@ func TestRefreshRotatesTokenAndExtendsSession(t *testing.T) {
 		t.Fatalf("expected second refresh to succeed, got %d: %s", secondResponse.Code, secondResponse.Body.String())
 	}
 }
+
+func TestLoginSuccessAndCaseInsensitivity(t *testing.T) {
+	pool := setupTestDB(t)
+	defer pool.Close()
+
+	authHandler := handler.NewAuthHandler(pool, &config.Config{
+		AllowOpenRegistration: true,
+		AccessTokenSecret:     "super-secret-access-token-key-for-dev",
+		RefreshTokenSecret:    "super-secret-refresh-token-key-for-dev",
+	})
+
+	// 1. Register user with lowercase email
+	regBody := models.RegisterRequest{
+		Email:       "testuser@mixtape.local",
+		Password:    "correctPassword123",
+		DisplayName: "Test User",
+	}
+	bodyBytes, _ := json.Marshal(regBody)
+	req := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBuffer(bodyBytes))
+	rr := httptest.NewRecorder()
+	authHandler.Register(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Registration failed: %s", rr.Body.String())
+	}
+
+	// 2. Login with uppercase email and leading/trailing whitespace
+	loginReq := models.LoginRequest{
+		Email:    "  TESTUSER@MIXTAPE.LOCAL  ",
+		Password: "correctPassword123",
+		Device:   "Android",
+		Platform: "Android",
+	}
+	loginBytes, _ := json.Marshal(loginReq)
+	loginHttpReq := httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(loginBytes))
+	loginRr := httptest.NewRecorder()
+	authHandler.Login(loginRr, loginHttpReq)
+
+	if loginRr.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for case-insensitive/trimmed login, got %d: %s", loginRr.Code, loginRr.Body.String())
+	}
+
+	var tokenRes models.TokenResponse
+	if err := json.Unmarshal(loginRr.Body.Bytes(), &tokenRes); err != nil {
+		t.Fatalf("Failed to parse token response: %v", err)
+	}
+	if tokenRes.AccessToken == "" || tokenRes.RefreshToken == "" {
+		t.Fatalf("Expected non-empty tokens in response")
+	}
+
+	// 3. Login with wrong password returns 401
+	badLoginReq := models.LoginRequest{
+		Email:    "testuser@mixtape.local",
+		Password: "wrongPassword",
+	}
+	badLoginBytes, _ := json.Marshal(badLoginReq)
+	badHttpReq := httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(badLoginBytes))
+	badRr := httptest.NewRecorder()
+	authHandler.Login(badRr, badHttpReq)
+	if badRr.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 Unauthorized for wrong password, got %d", badRr.Code)
+	}
+
+	// 4. Login with empty credentials returns 400
+	emptyLoginReq := models.LoginRequest{
+		Email:    "   ",
+		Password: "",
+	}
+	emptyLoginBytes, _ := json.Marshal(emptyLoginReq)
+	emptyHttpReq := httptest.NewRequest("POST", "/api/auth/login", bytes.NewBuffer(emptyLoginBytes))
+	emptyRr := httptest.NewRecorder()
+	authHandler.Login(emptyRr, emptyHttpReq)
+	if emptyRr.Code != http.StatusBadRequest {
+		t.Fatalf("Expected 400 Bad Request for empty credentials, got %d", emptyRr.Code)
+	}
+}

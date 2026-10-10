@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -49,6 +50,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.Email = strings.TrimSpace(req.Email)
+	req.DisplayName = strings.TrimSpace(req.DisplayName)
 	if req.Email == "" || req.Password == "" || req.DisplayName == "" {
 		respondError(w, http.StatusBadRequest, "email, password, and display_name are required")
 		return
@@ -146,9 +149,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	trimmedEmail := strings.TrimSpace(req.Email)
+	if trimmedEmail == "" || req.Password == "" {
+		respondError(w, http.StatusBadRequest, "email and password are required")
+		return
+	}
+
 	var userID uuid.UUID
 	var hash string
-	err := h.db.QueryRow(r.Context(), "SELECT id, password_hash FROM users WHERE email = $1", req.Email).Scan(&userID, &hash)
+	err := h.db.QueryRow(r.Context(), "SELECT id, password_hash FROM users WHERE LOWER(email) = LOWER($1)", trimmedEmail).Scan(&userID, &hash)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "invalid credentials")
 		return

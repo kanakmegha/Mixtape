@@ -8,33 +8,42 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class AuthTokenStore @Inject constructor(
-    @ApplicationContext private val context: Context
+open class AuthTokenStore @Inject constructor(
+    @param:ApplicationContext private val context: Context?
 ) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-
-    private val sharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "auth_prefs",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-    )
-
-    fun save(accessToken: String, refreshToken: String) {
-        sharedPreferences.edit()
-            .putString("access_token", accessToken)
-            .putString("refresh_token", refreshToken)
-            .apply()
+    private val masterKey by lazy {
+        context?.let {
+            MasterKey.Builder(it)
+                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                .build()
+        }
     }
 
-    fun getAccessToken(): String? = sharedPreferences.getString("access_token", null)
+    private val sharedPreferences by lazy {
+        if (context != null && masterKey != null) {
+            EncryptedSharedPreferences.create(
+                context,
+                "auth_prefs",
+                masterKey!!,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } else null
+    }
 
-    fun getRefreshToken(): String? = sharedPreferences.getString("refresh_token", null)
+    open fun save(accessToken: String, refreshToken: String) {
+        sharedPreferences?.edit()
+            ?.putString("access_token", accessToken)
+            ?.putString("refresh_token", refreshToken)
+            ?.apply()
+    }
 
-    fun clear() {
-        sharedPreferences.edit().clear().apply()
+    open fun getAccessToken(): String? = sharedPreferences?.getString("access_token", null)
+
+    open fun getRefreshToken(): String? = sharedPreferences?.getString("refresh_token", null)
+
+    open fun clear() {
+        sharedPreferences?.edit()?.clear()?.apply()
     }
 }
+

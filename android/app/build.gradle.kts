@@ -36,8 +36,8 @@ android {
       }
 
       // Bump versionCode for EVERY distributed release (must strictly increase).
-      versionCode = (project.findProperty("mixtape.versionCode") as String?)?.toInt() ?: 1
-      versionName = (project.findProperty("mixtape.versionName") as String?) ?: "1.0.0"
+      versionCode = (project.findProperty("mixtape.versionCode") as String?)?.toInt() ?: 2
+      versionName = (project.findProperty("mixtape.versionName") as String?) ?: "1.0.1"
     }
 
 
@@ -77,6 +77,12 @@ android {
       aidl = false
       buildConfig = true
       shaders = false
+    }
+
+    testOptions {
+      unitTests {
+        isReturnDefaultValues = true
+      }
     }
 
     packaging {

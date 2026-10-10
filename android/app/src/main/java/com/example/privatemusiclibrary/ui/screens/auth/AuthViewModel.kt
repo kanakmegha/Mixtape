@@ -51,22 +51,54 @@ class AuthViewModel @Inject constructor(
     }
 
     private suspend fun performLogin(email: String, pass: String): Boolean {
+        val normalizedEmail = email.trim().lowercase()
+        val startTime = System.currentTimeMillis()
         return try {
-            val req = LoginRequest(email, pass, "Android", "Android")
+            val req = LoginRequest(normalizedEmail, pass, "Android", "Android")
             val res = api.login(req)
-            if (res.isSuccessful && res.body() != null) {
+            val durationMs = System.currentTimeMillis() - startTime
+            val code = res.code()
+            val rawRequest = res.raw().request
+            val host = rawRequest.url.host
+            val path = rawRequest.url.encodedPath
+            val parsedBody = res.body() != null
+            val rawError = if (!res.isSuccessful) {
+                res.errorBody()?.string()?.take(150)?.replace(Regex("[\\r\\n]+"), " ")
+            } else null
+            val sanitizedError = if (rawError.isNullOrBlank()) "none" else rawError
+
+            android.util.Log.i(
+                "MixtapeAuth",
+                "POST /auth/login host=$host path=$path status=$code parsed=$parsedBody duration=${durationMs}ms error=$sanitizedError"
+            )
+
+            if (res.isSuccessful && parsedBody) {
                 val tokens = res.body()!!
                 tokenStore.save(tokens.accessToken, tokens.refreshToken)
                 _authState.value = AuthState.Authenticated
                 true
-            } else if (res.code() >= 500) {
+            } else if (code == 401) {
+                _uiError.value = "Invalid email or password"
+                false
+            } else if (code == 429) {
+                _uiError.value = "Too many login attempts. Please try again in a few minutes."
+                false
+            } else if (code == 400) {
+                _uiError.value = "Invalid request format. Please check your credentials."
+                false
+            } else if (code >= 500) {
                 _uiError.value = "Mixtape server is temporarily unavailable. Your local library still works."
                 false
             } else {
-                _uiError.value = "Invalid email or password"
+                _uiError.value = "Sign-in failed (HTTP $code). Please try again."
                 false
             }
         } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - startTime
+            android.util.Log.e(
+                "MixtapeAuth",
+                "POST /auth/login failed duration=${durationMs}ms exception=${e.javaClass.simpleName} errorMsg=${e.message?.take(100)}"
+            )
             _uiError.value = networkErrorMessage(e)
             false
         }
@@ -85,7 +117,9 @@ class AuthViewModel @Inject constructor(
     }
 
     fun register(email: String, pass: String, name: String, inviteToken: String) {
-        if (email.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+        val normalizedEmail = email.trim().lowercase()
+        val trimmedName = name.trim()
+        if (normalizedEmail.isBlank() || !android.util.Patterns.EMAIL_ADDRESS.matcher(normalizedEmail).matches()) {
             _uiError.value = "Please enter a valid email address."
             return
         }
@@ -93,7 +127,7 @@ class AuthViewModel @Inject constructor(
             _uiError.value = "Password must be at least 6 characters."
             return
         }
-        if (name.isBlank()) {
+        if (trimmedName.isBlank()) {
             _uiError.value = "Display name cannot be empty."
             return
         }
@@ -102,10 +136,10 @@ class AuthViewModel @Inject constructor(
             _isLoading.value = true
             _uiError.value = null
             try {
-                val req = RegisterRequest(email, pass, name, inviteToken)
+                val req = RegisterRequest(normalizedEmail, pass, trimmedName, inviteToken.trim())
                 val res = api.register(req)
                 if (res.isSuccessful) {
-                    val loginSuccess = performLogin(email, pass)
+                    val loginSuccess = performLogin(normalizedEmail, pass)
                     if (!loginSuccess && _uiError.value == null) {
                         _uiError.value = "Account created successfully, but automatic sign-in failed. Please sign in with your password."
                     }
