@@ -29,6 +29,19 @@ func NewAuthHandler(db *pgxpool.Pool, cfg *config.Config) *AuthHandler {
 	return &AuthHandler{db: db, cfg: cfg}
 }
 
+// bcrypt limits inputs to 72 bytes, while signed JWT refresh tokens are longer.
+// Hash the token with SHA-256 first, then bcrypt the fixed-length hex digest so
+// the token is handled consistently and the database never stores it directly.
+func hashRefreshToken(token string) ([]byte, error) {
+	digest := sha256.Sum256([]byte(token))
+	return bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(digest[:])), bcrypt.DefaultCost)
+}
+
+func compareRefreshToken(hash []byte, token string) error {
+	digest := sha256.Sum256([]byte(token))
+	return bcrypt.CompareHashAndPassword(hash, []byte(hex.EncodeToString(digest[:])))
+}
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req models.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -162,7 +175,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Store only a password hash of the refresh token.
-	rtHash, err := bcrypt.GenerateFromPassword([]byte(rt), bcrypt.DefaultCost)
+	rtHash, err := hashRefreshToken(rt)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "couldn't create session")
 		return
@@ -210,7 +223,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(rtHash), []byte(req.RefreshToken)); err != nil {
+	if err := compareRefreshToken([]byte(rtHash), req.RefreshToken); err != nil {
 		respondError(w, http.StatusUnauthorized, "invalid refresh token")
 		return
 	}
@@ -232,7 +245,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
 		return
 	}
-	newHash, err := bcrypt.GenerateFromPassword([]byte(refreshToken), bcrypt.DefaultCost)
+	newHash, err := hashRefreshToken(refreshToken)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
 		return
