@@ -39,6 +39,12 @@ import com.example.privatemusiclibrary.ui.components.MixtapeTrackCard
 import com.example.privatemusiclibrary.ui.components.MixtapeTrackRow
 import com.example.privatemusiclibrary.ui.components.SectionHeader
 import com.example.privatemusiclibrary.ui.screens.auth.AuthViewModel
+import com.example.privatemusiclibrary.BuildConfig
+import com.example.privatemusiclibrary.update.AppUpdateCheckResult
+import com.example.privatemusiclibrary.update.AppUpdateChecker
+import com.example.privatemusiclibrary.update.AppUpdateDownloader
+import com.example.privatemusiclibrary.update.AvailableAppUpdate
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen() {
@@ -648,6 +654,31 @@ fun SettingsScreen(
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var checkingForUpdates by remember { mutableStateOf(false) }
+    var availableUpdate by remember { mutableStateOf<AvailableAppUpdate?>(null) }
+    var updateMessage by remember { mutableStateOf<String?>(null) }
+
+    fun checkForUpdates() {
+        if (checkingForUpdates) return
+        checkingForUpdates = true
+        updateMessage = null
+        coroutineScope.launch {
+            when (val result = AppUpdateChecker.checkForUpdate()) {
+                is AppUpdateCheckResult.UpdateAvailable -> {
+                    availableUpdate = result.update
+                }
+                is AppUpdateCheckResult.UpToDate -> {
+                    updateMessage = "You're using the latest version (${result.currentVersion})."
+                }
+                is AppUpdateCheckResult.Failed -> {
+                    updateMessage = result.message
+                }
+            }
+            checkingForUpdates = false
+        }
+    }
 
     val documentTreeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -799,13 +830,81 @@ fun SettingsScreen(
             item {
                 SettingsSectionHeader("About")
                 SettingsItem(
+                    icon = Icons.Default.SystemUpdate,
+                    title = if (checkingForUpdates) "Checking for updates…" else "Check for updates",
+                    subtitle = if (checkingForUpdates) {
+                        "Checking the latest GitHub release"
+                    } else {
+                        "Installed version ${BuildConfig.VERSION_NAME} · Tap to check"
+                    },
+                    onClick = { checkForUpdates() },
+                    enabled = !checkingForUpdates
+                )
+                SettingsItem(
                     icon = Icons.Default.Info,
                     title = "Mixtape Version",
-                    subtitle = "1.0.0 (Production Build)",
+                    subtitle = "${BuildConfig.VERSION_NAME} (Installed)",
                     onClick = null
                 )
             }
         }
+    }
+
+    availableUpdate?.let { update ->
+        AlertDialog(
+            onDismissRequest = { availableUpdate = null },
+            title = { Text("Mixtape update available") },
+            text = {
+                Text(
+                    "Version ${update.versionName} is available. Download the APK now? " +
+                        "After it finishes, open the download notification and approve the Android installer. " +
+                        "Your existing data is retained when Android accepts this as an update."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        try {
+                            AppUpdateDownloader.enqueue(context, update)
+                            updateMessage = "Download started for version ${update.versionName}. When it finishes, tap the download notification to install the update."
+                            availableUpdate = null
+                        } catch (_: Exception) {
+                            updateMessage = "Couldn't start the APK download. Please try again."
+                            availableUpdate = null
+                        }
+                    }
+                ) { Text("Download APK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { availableUpdate = null }) { Text("Later") }
+            }
+        )
+    }
+
+    updateMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { updateMessage = null },
+            title = { Text("Mixtape updates") },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { updateMessage = null }) { Text("OK") }
+            },
+            dismissButton = {
+                if (message.contains("Download started")) {
+                    TextButton(
+                        onClick = {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/kanakmegha/Mixtape/releases"))
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                updateMessage = "Open github.com/kanakmegha/Mixtape/releases in your browser."
+                            }
+                            updateMessage = null
+                        }
+                    ) { Text("Releases page") }
+                }
+            }
+        )
     }
 }
 
