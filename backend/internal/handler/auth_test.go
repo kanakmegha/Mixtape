@@ -18,6 +18,8 @@ import (
 	"github.com/username/private-music-library/backend/internal/handler"
 	"github.com/username/private-music-library/backend/internal/middleware"
 	"github.com/username/private-music-library/backend/internal/models"
+	"github.com/username/private-music-library/backend/internal/utils"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func setupTestDB(t *testing.T) *pgxpool.Pool {
@@ -342,5 +344,87 @@ func TestUserCanCreateInvite(t *testing.T) {
 	
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("Failed to create invite as normal user: %s", rr.Body.String())
+	}
+}
+
+
+func TestRefreshRotatesTokenAndExtendsSession(t *testing.T) {
+	pool := setupTestDB(t)
+	defer pool.Close()
+
+	cfg := &config.Config{
+		AccessTokenSecret:  "test-access-secret",
+		RefreshTokenSecret: "test-refresh-secret",
+	}
+	userID := uuid.New()
+	sessionID := uuid.New()
+	_, err := pool.Exec(context.Background(),
+		"INSERT INTO users (id, email, password_hash, display_name, role) VALUES ($1, $2, $3, $4, $5)",
+		userID, "refresh-test@mixtape.local", "not-used", "Refresh Test", "user",
+	)
+	if err != nil {
+		t.Fatalf("failed to create test user: %v", err)
+	}
+
+	oldRefreshToken, err := utils.GenerateRefreshToken(
+		userID, sessionID, cfg.RefreshTokenSecret, 7*24*time.Hour,
+	)
+	if err != nil {
+		t.Fatalf("failed to create initial refresh token: %v", err)
+	}
+	oldHash, err := bcrypt.GenerateFromPassword([]byte(oldRefreshToken), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash initial refresh token: %v", err)
+	}
+	_, err = pool.Exec(context.Background(),
+		"INSERT INTO sessions (id, user_id, refresh_token_hash, device_name, platform) VALUES ($1, $2, $3, $4, $5)",
+		sessionID, userID, string(oldHash), "test-device", "Android",
+	)
+	if err != nil {
+		t.Fatalf("failed to create test session: %v", err)
+	}
+
+	requestBody, err := json.Marshal(models.RefreshRequest{RefreshToken: oldRefreshToken})
+	if err != nil {
+		t.Fatalf("failed to encode refresh request: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", bytes.NewReader(requestBody))
+	response := httptest.NewRecorder()
+	handler.NewAuthHandler(pool, cfg).Refresh(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var tokens models.TokenResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &tokens); err != nil {
+		t.Fatalf("failed to decode refresh response: %v", err)
+	}
+	if tokens.AccessToken == "" || tokens.RefreshToken == "" {
+		t.Fatal("refresh response must contain both tokens")
+	}
+	if tokens.RefreshToken == oldRefreshToken {
+		t.Fatal("refresh endpoint must rotate the refresh token")
+	}
+
+	newClaims, err := utils.VerifyToken(tokens.RefreshToken, cfg.RefreshTokenSecret)
+	if err != nil {
+		t.Fatalf("new refresh token is invalid: %v", err)
+	}
+	if newClaims.ExpiresAt == nil || newClaims.ExpiresAt.Time.Before(time.Now().Add(89*24*time.Hour)) {
+		t.Fatal("new refresh token should expire approximately 90 days from now")
+	}
+
+	var savedHash string
+	if err := pool.QueryRow(context.Background(),
+		"SELECT refresh_token_hash FROM sessions WHERE id = $1", sessionID,
+	).Scan(&savedHash); err != nil {
+		t.Fatalf("failed to read stored refresh token hash: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(tokens.RefreshToken)); err != nil {
+		t.Fatalf("session should store the new refresh token: %v", err)
+	}
+	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(oldRefreshToken)); err == nil {
+		t.Fatal("previous refresh token must no longer be valid for this session")
 	}
 }
