@@ -894,12 +894,15 @@ fun SettingsScreen(
                     TextButton(
                         onClick = {
                             try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/kanakmegha/Mixtape/releases"))
+                                val intent = Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse("https://github.com/kanakmegha/Mixtape/releases")
+                                )
                                 context.startActivity(intent)
+                                updateMessage = null
                             } catch (_: Exception) {
                                 updateMessage = "Open github.com/kanakmegha/Mixtape/releases in your browser."
                             }
-                            updateMessage = null
                         }
                     ) { Text("Releases page") }
                 }
