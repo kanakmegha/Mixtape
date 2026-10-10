@@ -93,10 +93,13 @@ class PlayerViewModel @Inject constructor(
     
     fun deleteTrack(track: Track) {
         viewModelScope.launch {
+            // Stop playback and clear the entire queue before deleting the active file.
+            // pause() + skipNext() can keep the deleted item in the Media3 queue,
+            // which may allow it to continue playing or replay with repeat enabled.
             if (playerState.value.currentTrack?.id == track.id) {
-                playerController.pause()
-                playerController.skipNext()
+                playerController.clearQueue()
             }
+
             trackRepository.delete(track)
             localAudioStorage.delete(track.localUri)
         }

@@ -112,8 +112,12 @@ class Media3AudioPlayer @Inject constructor(
     }
 
     override fun clearQueue() {
+        // Explicitly stop playback before removing media items so a deleted
+        // current track cannot continue playing in the background.
         queueTracks = emptyList()
+        controller?.stop()
         controller?.clearMediaItems()
+        updateState()
     }
 
     override fun setShuffle(enabled: Boolean) {

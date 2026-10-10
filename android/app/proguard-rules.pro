@@ -12,3 +12,8 @@
 # Preserve Apache Commons Compress classes used by yt-dlp
 # to prevent R8 from breaking runtime class discovery.
 -keep class org.apache.commons.compress.** { *; }
+
+# Preserve Apache Commons Compress classes used by the yt-dlp dependency.
+# The release build previously crashed during application initialization with an
+# obfuscated "class ... is not a concrete class" error. Verify this fix on-device.
+-keep class org.apache.commons.compress.** { *; }
