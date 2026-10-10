@@ -375,13 +375,11 @@ func TestRefreshRotatesTokenAndExtendsSession(t *testing.T) {
 		t.Fatalf("failed to create initial refresh token: %v", err)
 	}
 	oldDigest := sha256.Sum256([]byte(oldRefreshToken))
-	oldHash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(oldDigest[:])), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatalf("failed to hash initial refresh token: %v", err)
-	}
+	// Reproduce existing sessions from the old implementation: it attempted to
+	// bcrypt the full JWT, received ErrPasswordTooLong, ignored it, and stored "".
 	_, err = pool.Exec(context.Background(),
 		"INSERT INTO sessions (id, user_id, refresh_token_hash, device_name, platform) VALUES ($1, $2, $3, $4, $5)",
-		sessionID, userID, string(oldHash), "test-device", "Android",
+		sessionID, userID, "", "test-device", "Android",
 	)
 	if err != nil {
 		t.Fatalf("failed to create test session: %v", err)
@@ -430,5 +428,17 @@ func TestRefreshRotatesTokenAndExtendsSession(t *testing.T) {
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(hex.EncodeToString(oldDigest[:]))); err == nil {
 		t.Fatal("previous refresh token must no longer be valid for this session")
+	}
+
+	// The freshly stored digest must be accepted on the next refresh too.
+	secondBody, err := json.Marshal(models.RefreshRequest{RefreshToken: tokens.RefreshToken})
+	if err != nil {
+		t.Fatalf("failed to encode second refresh request: %v", err)
+	}
+	secondRequest := httptest.NewRequest(http.MethodPost, "/api/auth/refresh", bytes.NewReader(secondBody))
+	secondResponse := httptest.NewRecorder()
+	handler.NewAuthHandler(pool, cfg).Refresh(secondResponse, secondRequest)
+	if secondResponse.Code != http.StatusOK {
+		t.Fatalf("expected second refresh to succeed, got %d: %s", secondResponse.Code, secondResponse.Body.String())
 	}
 }
