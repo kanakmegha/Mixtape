@@ -2,7 +2,9 @@ package handler_test
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -372,7 +374,8 @@ func TestRefreshRotatesTokenAndExtendsSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create initial refresh token: %v", err)
 	}
-	oldHash, err := bcrypt.GenerateFromPassword([]byte(oldRefreshToken), bcrypt.DefaultCost)
+	oldDigest := sha256.Sum256([]byte(oldRefreshToken))
+	oldHash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(oldDigest[:])), bcrypt.DefaultCost)
 	if err != nil {
 		t.Fatalf("failed to hash initial refresh token: %v", err)
 	}
@@ -421,10 +424,11 @@ func TestRefreshRotatesTokenAndExtendsSession(t *testing.T) {
 	).Scan(&savedHash); err != nil {
 		t.Fatalf("failed to read stored refresh token hash: %v", err)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(tokens.RefreshToken)); err != nil {
+	newDigest := sha256.Sum256([]byte(tokens.RefreshToken))
+	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(hex.EncodeToString(newDigest[:]))); err != nil {
 		t.Fatalf("session should store the new refresh token: %v", err)
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(oldRefreshToken)); err == nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(savedHash), []byte(hex.EncodeToString(oldDigest[:]))); err == nil {
 		t.Fatal("previous refresh token must no longer be valid for this session")
 	}
 }
