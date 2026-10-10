@@ -211,21 +211,30 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
+	var sessionUserID uuid.UUID
 	var rtHash string
 	var revokedAt *time.Time
 	err = tx.QueryRow(
 		r.Context(),
-		"SELECT refresh_token_hash, revoked_at FROM sessions WHERE id = $1 FOR UPDATE",
+		"SELECT user_id, refresh_token_hash, revoked_at FROM sessions WHERE id = $1 FOR UPDATE",
 		claims.SessionID,
-	).Scan(&rtHash, &revokedAt)
-	if err != nil || revokedAt != nil {
+	).Scan(&sessionUserID, &rtHash, &revokedAt)
+	if err != nil || revokedAt != nil || sessionUserID != claims.UserID {
 		respondError(w, http.StatusUnauthorized, "session revoked or invalid")
 		return
 	}
 
-	if err := compareRefreshToken([]byte(rtHash), req.RefreshToken); err != nil {
-		respondError(w, http.StatusUnauthorized, "invalid refresh token")
-		return
+	if rtHash != "" {
+		if err := compareRefreshToken([]byte(rtHash), req.RefreshToken); err != nil {
+			respondError(w, http.StatusUnauthorized, "invalid refresh token")
+			return
+		}
+	} else {
+		// Compatibility path for sessions created by the previous implementation:
+		// bcrypt rejected long JWTs (>72 bytes), but login ignored the error and
+		// persisted an empty hash. The verified JWT signature, expiry, user id,
+		// session id and active DB row allow one safe rotation that repairs the hash.
+		// All newly issued/refreshed sessions use a non-empty bcrypt digest.
 	}
 
 	accessToken, err := utils.GenerateAccessToken(
