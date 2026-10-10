@@ -15,6 +15,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	accessTokenLifetime  = 15 * time.Minute
+	refreshTokenLifetime = 90 * 24 * time.Hour
+)
+
 type AuthHandler struct {
 	db  *pgxpool.Pool
 	cfg *config.Config
@@ -145,19 +150,35 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.db.Exec(r.Context(), "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1", userID)
 
 	sessionID := uuid.New()
-	at, _ := utils.GenerateAccessToken(userID, h.cfg.AccessTokenSecret, 15*time.Minute)
-	rt, _ := utils.GenerateRefreshToken(userID, sessionID, h.cfg.RefreshTokenSecret, 7*24*time.Hour)
+	at, err := utils.GenerateAccessToken(userID, h.cfg.AccessTokenSecret, accessTokenLifetime)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't create session")
+		return
+	}
+	rt, err := utils.GenerateRefreshToken(userID, sessionID, h.cfg.RefreshTokenSecret, refreshTokenLifetime)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't create session")
+		return
+	}
 
-	// Hash refresh token for DB
-	rtHash, _ := bcrypt.GenerateFromPassword([]byte(rt), bcrypt.DefaultCost)
+	// Store only a password hash of the refresh token.
+	rtHash, err := bcrypt.GenerateFromPassword([]byte(rt), bcrypt.DefaultCost)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't create session")
+		return
+	}
 	_, err = h.db.Exec(r.Context(), "INSERT INTO sessions (id, user_id, refresh_token_hash, device_name, platform) VALUES ($1, $2, $3, $4, $5)", sessionID, userID, string(rtHash), req.Device, req.Platform)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't create session")
+		return
+	}
 
 	respondJSON(w, http.StatusOK, models.TokenResponse{AccessToken: at, RefreshToken: rt})
 }
 
 func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req models.RefreshRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.RefreshToken == "" {
 		respondError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
@@ -168,23 +189,73 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lock the session row so simultaneous refresh requests cannot overwrite
+	// each other's newly rotated refresh token.
+	tx, err := h.db.Begin(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
 	var rtHash string
 	var revokedAt *time.Time
-	err = h.db.QueryRow(r.Context(), "SELECT refresh_token_hash, revoked_at FROM sessions WHERE id = $1", claims.SessionID).Scan(&rtHash, &revokedAt)
+	err = tx.QueryRow(
+		r.Context(),
+		"SELECT refresh_token_hash, revoked_at FROM sessions WHERE id = $1 FOR UPDATE",
+		claims.SessionID,
+	).Scan(&rtHash, &revokedAt)
 	if err != nil || revokedAt != nil {
 		respondError(w, http.StatusUnauthorized, "session revoked or invalid")
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(rtHash), []byte(req.RefreshToken)); err != nil {
-		respondError(w, http.StatusUnauthorized, "invalid token")
+		respondError(w, http.StatusUnauthorized, "invalid refresh token")
 		return
 	}
 
-	h.db.Exec(r.Context(), "UPDATE sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE id = $1", claims.SessionID)
+	accessToken, err := utils.GenerateAccessToken(
+		claims.UserID, h.cfg.AccessTokenSecret, accessTokenLifetime,
+	)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
+		return
+	}
 
-	at, _ := utils.GenerateAccessToken(claims.UserID, h.cfg.AccessTokenSecret, 15*time.Minute)
-	respondJSON(w, http.StatusOK, models.TokenResponse{AccessToken: at, RefreshToken: req.RefreshToken}) // Keep same RT for simplicity, or rotate. Rotating requires updating DB.
+	// Issue a replacement refresh token with a sliding 90-day expiry. Active
+	// users renew this token whenever the 15-minute access token expires.
+	refreshToken, err := utils.GenerateRefreshToken(
+		claims.UserID, claims.SessionID, h.cfg.RefreshTokenSecret, refreshTokenLifetime,
+	)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
+		return
+	}
+	newHash, err := bcrypt.GenerateFromPassword([]byte(refreshToken), bcrypt.DefaultCost)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
+		return
+	}
+
+	_, err = tx.Exec(
+		r.Context(),
+		"UPDATE sessions SET refresh_token_hash = $1, last_seen_at = CURRENT_TIMESTAMP WHERE id = $2 AND revoked_at IS NULL",
+		string(newHash), claims.SessionID,
+	)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		respondError(w, http.StatusInternalServerError, "couldn't refresh session")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, models.TokenResponse{
+		AccessToken: accessToken,
+		RefreshToken: refreshToken,
+	})
 }
 
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
