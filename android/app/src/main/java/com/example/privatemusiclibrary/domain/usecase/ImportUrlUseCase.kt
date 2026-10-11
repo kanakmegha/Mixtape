@@ -14,16 +14,21 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
 
-class ImportUrlUseCase @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val importJobRepository: ImportJobRepository,
-    private val validateUrlUseCase: ValidateUrlUseCase
+open class ImportUrlUseCase @Inject constructor(
+    @ApplicationContext private val context: Context?,
+    private val importJobRepository: ImportJobRepository?,
+    private val validateUrlUseCase: ValidateUrlUseCase?
 ) {
-    suspend operator fun invoke(url: String): Result<String> {
-        val validation = validateUrlUseCase(url)
+    constructor() : this(null, null, null)
+
+    open suspend operator fun invoke(url: String): Result<String> {
+        val validation = validateUrlUseCase?.invoke(url)
         if (validation is ValidateUrlUseCase.ValidationResult.Invalid) {
             return Result.failure(Exception(validation.reason))
         }
+
+        val ctx = context ?: return Result.failure(IllegalStateException("No Context"))
+        val repo = importJobRepository ?: return Result.failure(IllegalStateException("No Repo"))
 
         val jobId = UUID.randomUUID().toString()
         val job = ImportJob(
@@ -37,7 +42,7 @@ class ImportUrlUseCase @Inject constructor(
             updatedAt = System.currentTimeMillis()
         )
         
-        importJobRepository.insert(job)
+        repo.insert(job)
         
         val inputData = Data.Builder()
             .putString("jobId", jobId)
@@ -52,7 +57,7 @@ class ImportUrlUseCase @Inject constructor(
             .setConstraints(constraints)
             .build()
             
-        WorkManager.getInstance(context).enqueue(workRequest)
+        WorkManager.getInstance(ctx).enqueue(workRequest)
         
         return Result.success(jobId)
     }

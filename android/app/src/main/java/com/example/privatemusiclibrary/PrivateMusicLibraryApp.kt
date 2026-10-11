@@ -13,6 +13,9 @@ class PrivateMusicLibraryApp : Application(), Configuration.Provider {
     
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var ytDlpUpdateManager: com.example.privatemusiclibrary.data.extraction.YtDlpUpdateManager
     
     companion object {
         var ytDlpInitialized = false
@@ -24,7 +27,8 @@ class PrivateMusicLibraryApp : Application(), Configuration.Provider {
         try {
             YoutubeDL.getInstance().init(this)
             ytDlpInitialized = true
-            android.util.Log.d("PrivateMusicApp", "[YT_DLP_INIT] SUCCESS (version: ${YoutubeDL.getInstance().version(this)})")
+            val versionStr = com.example.privatemusiclibrary.data.extraction.YtDlpUpdateManager.getInstalledVersion(this)
+            android.util.Log.d("PrivateMusicApp", "[YT_DLP_INIT] SUCCESS (version: $versionStr)")
         } catch (e: Exception) {
             ytDlpInitialized = false
             android.util.Log.e("PrivateMusicApp", "[YT_DLP_INIT] FAILED", e)
@@ -37,6 +41,10 @@ class PrivateMusicLibraryApp : Application(), Configuration.Provider {
         } catch (e: Exception) {
             ffmpegInitialized = false
             android.util.Log.e("PrivateMusicApp", "[FFMPEG_INIT] FAILED", e)
+        }
+
+        if (ytDlpInitialized) {
+            ytDlpUpdateManager.initOrUpdateAsync()
         }
     }
 

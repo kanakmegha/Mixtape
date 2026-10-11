@@ -204,7 +204,7 @@ class ValidateUrlUseCaseTest {
             override suspend fun extract(
                 url: String,
                 outputDir: java.io.File,
-                progressCallback: (Int) -> Unit
+                progressCallback: (com.example.privatemusiclibrary.domain.model.ImportJobStatus, Int) -> Unit
             ): ExtractedMedia {
                 return ExtractedMedia(
                     sourceUrl = url,
@@ -260,7 +260,8 @@ class ExtractorRoutingTest {
             com.example.privatemusiclibrary.data.extraction.DirectAudioUrlExtractor()
 
         assertTrue(directExtractor.supports("https://example.com/audio.mp3"))
-        assertTrue(directExtractor.supports("http://example.com/audio.m4a"))
+        assertTrue(directExtractor.supports("https://example.com/audio.mp3?token=abc&expires=123"))
+        assertTrue(directExtractor.supports("http://example.com/audio.m4a#part1"))
 
         assertFalse(directExtractor.supports("https://www.instagram.com/p/123/"))
         assertFalse(directExtractor.supports("https://www.youtube.com/watch?v=123"))

@@ -27,15 +27,17 @@ import com.example.privatemusiclibrary.ui.screens.auth.RegisterScreen as ActualR
 
 @Composable
 fun MainNavigation(
+    pendingImportManager: com.example.privatemusiclibrary.data.importing.PendingImportManager? = null,
+    invitationToken: String? = null,
     sharedUrl: String? = null,
-    onSharedUrlHandled: () -> Unit = {},
-    invitationToken: String? = null
+    onSharedUrlHandled: () -> Unit = {}
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val authViewModel: AuthViewModel = hiltViewModel()
     val authState by authViewModel.authState.collectAsState()
+    val activePendingUrl = pendingImportManager?.pendingUrl?.collectAsState()?.value ?: sharedUrl
 
     LaunchedEffect(invitationToken, authState) {
         if (!invitationToken.isNullOrBlank() &&
@@ -47,12 +49,14 @@ fun MainNavigation(
         }
     }
 
-    LaunchedEffect(sharedUrl, authState) {
-        if (sharedUrl != null && authState == AuthState.Authenticated) {
-            navController.navigate(NavigationItem.Import.route) {
-                popUpTo(NavigationItem.Home.route) { inclusive = false }
+    LaunchedEffect(activePendingUrl, authState) {
+        if (!activePendingUrl.isNullOrBlank() && authState == AuthState.Authenticated) {
+            if (currentRoute != NavigationItem.Import.route) {
+                navController.navigate(NavigationItem.Import.route) {
+                    popUpTo(NavigationItem.Home.route) { inclusive = false }
+                    launchSingleTop = true
+                }
             }
-            onSharedUrlHandled()
         }
     }
 
@@ -168,8 +172,11 @@ fun MainNavigation(
 
                 composable(NavigationItem.Import.route) {
                     ImportScreen(
-                        sharedUrl = sharedUrl,
-                        onSharedUrlHandled = onSharedUrlHandled
+                        sharedUrl = activePendingUrl,
+                        onSharedUrlHandled = onSharedUrlHandled,
+                        onNavigateToSettings = {
+                            navController.navigate(NavigationItem.Settings.route)
+                        }
                     )
                 }
 

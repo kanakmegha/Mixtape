@@ -34,7 +34,9 @@ class MainActivity : ComponentActivity() {
   @Inject
   lateinit var scanLocalAudioUseCase: ScanLocalAudioUseCase
 
-    private val _sharedUrl = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+  @Inject
+  lateinit var pendingImportManager: com.example.privatemusiclibrary.data.importing.PendingImportManager
+
     private val _invitationToken =
         kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
     private val _availableUpdate =
@@ -76,7 +78,6 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            val sharedUrl = _sharedUrl.collectAsState().value
             val invitationToken = _invitationToken.collectAsState().value
             val availableUpdate = _availableUpdate.collectAsState().value
             val updatePromptError = _updatePromptError.collectAsState().value
@@ -88,8 +89,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         MainNavigation(
-                            sharedUrl = sharedUrl,
-                            onSharedUrlHandled = { _sharedUrl.value = null },
+                            pendingImportManager = pendingImportManager,
                             invitationToken = invitationToken
                         )
 
@@ -194,16 +194,14 @@ class MainActivity : ComponentActivity() {
             }
 
             android.content.Intent.ACTION_SEND -> {
-                if (intent.type == "text/plain") {
-                    val text = intent.getStringExtra(
-                        android.content.Intent.EXTRA_TEXT
-                    )
-                    val urlRegex =
-                        "(https?://[^\\s]+)".toRegex()
-                    val match = text?.let { urlRegex.find(it) }
+                if (intent.type?.startsWith("text/") == true || intent.type == "text/plain") {
+                    val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)
+                        ?: intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString()
+                        ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
 
-                    if (match != null) {
-                        _sharedUrl.value = match.value
+                    val extractedUrl = com.example.privatemusiclibrary.util.SharedUrlExtractor.extractUrl(text)
+                    if (extractedUrl != null) {
+                        pendingImportManager.setPendingUrl(extractedUrl)
                     }
                 }
             }

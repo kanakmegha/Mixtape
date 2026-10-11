@@ -230,7 +230,9 @@ class SettingsViewModel @Inject constructor(
 data class ImportUiState(
     val storageUri: String? = null,
     val isStorageConfigured: Boolean = false,
+    val isStorageLoading: Boolean = true,
     val urlInput: String = "",
+    val pendingSharedUrl: String? = null,
     val isImporting: Boolean = false,
     val error: String? = null,
     val currentJob: com.example.privatemusiclibrary.domain.model.ImportJob? = null
@@ -238,7 +240,8 @@ data class ImportUiState(
 
 @HiltViewModel
 class ImportViewModel @Inject constructor(
-    private val getStorageInfoUseCase: GetStorageInfoUseCase,
+    private val settingsRepository: com.example.privatemusiclibrary.domain.repository.SettingsRepository,
+    private val pendingImportManager: com.example.privatemusiclibrary.data.importing.PendingImportManager,
     private val importUrlUseCase: com.example.privatemusiclibrary.domain.usecase.ImportUrlUseCase,
     private val cancelImportJobUseCase: com.example.privatemusiclibrary.domain.usecase.CancelImportJobUseCase,
     private val importJobRepository: com.example.privatemusiclibrary.domain.repository.ImportJobRepository
@@ -248,18 +251,44 @@ class ImportViewModel @Inject constructor(
     val uiState: StateFlow<ImportUiState> = _uiState.asStateFlow()
 
     private var currentJobId: String? = null
+    private var isImportStarting = false
 
     init {
+        // Continuously observe storage settings
         viewModelScope.launch {
-            val settings = getStorageInfoUseCase()
-            _uiState.update {
-                it.copy(
-                    storageUri = settings.storageUri,
-                    isStorageConfigured = settings.storageUri != null
-                )
+            settingsRepository.observeSettings().collect { settings ->
+                val configured = !settings.storageUri.isNullOrBlank()
+                _uiState.update {
+                    it.copy(
+                        storageUri = settings.storageUri,
+                        isStorageConfigured = configured,
+                        isStorageLoading = false
+                    )
+                }
+
+                // If storage was just configured and we have a waiting pending URL, start import
+                if (configured) {
+                    checkAndStartPendingImport()
+                }
             }
         }
 
+        // Observe incoming pending shared URLs
+        viewModelScope.launch {
+            pendingImportManager.pendingUrl.collect { pendingUrl ->
+                if (!pendingUrl.isNullOrBlank()) {
+                    _uiState.update {
+                        it.copy(
+                            urlInput = pendingUrl,
+                            pendingSharedUrl = pendingUrl
+                        )
+                    }
+                    checkAndStartPendingImport()
+                }
+            }
+        }
+
+        // Observe import jobs
         viewModelScope.launch {
             importJobRepository.observeAll().collect { jobs ->
                 val job = jobs.find { it.id == currentJobId }
@@ -285,26 +314,98 @@ class ImportViewModel @Inject constructor(
         _uiState.update { it.copy(urlInput = url, error = null) }
     }
 
+    fun onSharedUrlReceived(url: String?) {
+        if (!url.isNullOrBlank()) {
+            pendingImportManager.setPendingUrl(url)
+        }
+    }
+
+    private fun checkAndStartPendingImport() {
+        val state = _uiState.value
+        val pending = state.pendingSharedUrl ?: pendingImportManager.pendingUrl.value
+        if (pending.isNullOrBlank()) return
+
+        // 1. Wait for storage settings to finish loading before deciding
+        if (state.isStorageLoading) return
+
+        // 2. If storage is not configured, retain URL and inform user without discarding
+        if (!state.isStorageConfigured) {
+            _uiState.update {
+                it.copy(
+                    urlInput = pending,
+                    pendingSharedUrl = pending,
+                    error = "Storage directory is not configured. Please select a folder in Settings."
+                )
+            }
+            return
+        }
+
+        // 3. Guard against duplicate scheduling or concurrent triggers
+        if (isImportStarting || state.isImporting || (state.currentJob != null && !state.currentJob.status.isTerminal())) {
+            return
+        }
+
+        // 4. Consume URL and start import
+        isImportStarting = true
+        pendingImportManager.consumePendingUrl()
+        _uiState.update { it.copy(pendingSharedUrl = null) }
+
+        startImportInternal(pending)
+    }
+
     fun startImport() {
-        val url = _uiState.value.urlInput
+        val url = _uiState.value.urlInput.trim()
         if (url.isBlank()) return
 
         if (!_uiState.value.isStorageConfigured) {
-            _uiState.update { it.copy(error = "Storage location not configured") }
+            _uiState.update { it.copy(error = "Storage directory is not configured. Please select a folder in Settings.") }
+            return
+        }
+
+        if (_uiState.value.pendingSharedUrl == url) {
+            pendingImportManager.consumePendingUrl()
+            _uiState.update { it.copy(pendingSharedUrl = null) }
+        }
+
+        startImportInternal(url)
+    }
+
+    private fun startImportInternal(url: String) {
+        if (url.isBlank()) {
+            isImportStarting = false
             return
         }
 
         _uiState.update { it.copy(isImporting = true, error = null) }
 
         viewModelScope.launch {
-            val result = importUrlUseCase(url)
-            if (result.isSuccess) {
-                currentJobId = result.getOrNull()
-                _uiState.update { it.copy(urlInput = "") }
-                // isImporting will be set to false when the job is actually observed
-            } else {
-                _uiState.update { it.copy(isImporting = false, error = result.exceptionOrNull()?.message) }
+            try {
+                val result = importUrlUseCase(url)
+                if (result.isSuccess) {
+                    currentJobId = result.getOrNull()
+                    _uiState.update { it.copy(urlInput = "") }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isImporting = false,
+                            error = result.exceptionOrNull()?.message ?: "Failed to start import"
+                        )
+                    }
+                }
+            } finally {
+                isImportStarting = false
             }
+        }
+    }
+
+    fun dismissPendingUrl() {
+        pendingImportManager.clear()
+        _uiState.update {
+            it.copy(
+                pendingSharedUrl = null,
+                urlInput = if (it.urlInput == it.pendingSharedUrl) "" else it.urlInput,
+                error = null
+            )
         }
     }
 

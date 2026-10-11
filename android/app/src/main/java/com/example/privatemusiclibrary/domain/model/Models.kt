@@ -40,6 +40,8 @@ data class Playlist(
 enum class ImportJobStatus {
     QUEUED, VALIDATING, RESOLVING, DOWNLOADING, CONVERTING, SAVING, COMPLETED, FAILED, CANCELLED;
 
+    fun isTerminal(): Boolean = this == COMPLETED || this == FAILED || this == CANCELLED
+
     companion object {
         fun fromString(status: String): ImportJobStatus = try {
             valueOf(status.uppercase())
@@ -67,8 +69,8 @@ data class PlaybackState(
 )
 
 data class AppSettings(
-    val storageUri: String?,
-    val defaultPlaybackSpeed: Float,
-    val defaultAudioQuality: String,
-    val resumePlayback: Boolean
+    val storageUri: String? = null,
+    val defaultPlaybackSpeed: Float = 1.0f,
+    val defaultAudioQuality: String = "192k",
+    val resumePlayback: Boolean = true
 )

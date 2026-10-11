@@ -1,6 +1,6 @@
 package com.example.privatemusiclibrary.domain.extraction
 
-import android.net.Uri
+import com.example.privatemusiclibrary.domain.model.ImportJobStatus
 import java.io.File
 
 data class ExtractedMedia(
@@ -21,14 +21,24 @@ interface AudioExtractor {
 
     /**
      * Extracts/downloads the audio from the given URL and writes it to a temporary file.
+     * Reports distinct progress stages (VALIDATING, RESOLVING, DOWNLOADING, CONVERTING, SAVING).
      * @param url The supported URL.
      * @param outputDir The directory to place the temporary extracted file.
-     * @param progressCallback Callback reporting percentage complete (0 to 100).
+     * @param progressCallback Callback reporting stage and percentage complete (0 to 100).
      * @return ExtractedMedia containing the temporary file and associated metadata.
      */
     suspend fun extract(
         url: String, 
         outputDir: File,
-        progressCallback: (Int) -> Unit
+        progressCallback: (stage: ImportJobStatus, progress: Int) -> Unit
     ): ExtractedMedia
+
+    /**
+     * Overload for simple progress callback reporting only integer percentages.
+     */
+    suspend fun extract(
+        url: String,
+        outputDir: File,
+        progressCallback: (Int) -> Unit
+    ): ExtractedMedia = extract(url, outputDir) { _, progress -> progressCallback(progress) }
 }

@@ -368,12 +368,12 @@ fun LibraryScreen(
 fun ImportScreen(
     sharedUrl: String? = null,
     onSharedUrlHandled: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     viewModel: ImportViewModel = hiltViewModel()
 ) {
     LaunchedEffect(sharedUrl) {
-        if (sharedUrl != null) {
-            viewModel.onUrlInputChanged(sharedUrl)
-            viewModel.startImport()
+        if (!sharedUrl.isNullOrBlank()) {
+            viewModel.onSharedUrlReceived(sharedUrl)
             onSharedUrlHandled()
         }
     }
@@ -402,26 +402,54 @@ fun ImportScreen(
                 .padding(horizontal = Dimens.spacingXl),
             verticalArrangement = Arrangement.spacedBy(Dimens.spacingXl)
         ) {
-            if (!state.isStorageConfigured) {
+            if (!state.isStorageLoading && !state.isStorageConfigured) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(Dimens.radiusMd)
+                    shape = RoundedCornerShape(Dimens.radiusMd),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(Dimens.spacingLg),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(Dimens.spacingSm)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.ErrorOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                        Spacer(modifier = Modifier.width(Dimens.spacingLg))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Spacer(modifier = Modifier.width(Dimens.spacingMd))
+                            Text(
+                                text = "Storage Directory Required",
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Text(
-                            text = "Storage directory is not configured. Please select a folder in Settings.",
+                            text = if (!state.pendingSharedUrl.isNullOrBlank()) {
+                                "Your shared link is ready to import, but Mixtape needs a music folder first. Tap below to select a folder in Settings."
+                            } else {
+                                "Storage directory is not configured. Please select a folder in Settings to save your downloaded tracks."
+                            },
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             style = MaterialTheme.typography.bodyMedium
                         )
+                        Button(
+                            onClick = onNavigateToSettings,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            ),
+                            shape = RoundedCornerShape(Dimens.radiusSm),
+                            modifier = Modifier.padding(top = Dimens.spacingXs)
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(Dimens.spacingSm))
+                            Text("Configure Storage in Settings")
+                        }
                     }
                 }
             }
