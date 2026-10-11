@@ -39,6 +39,7 @@ class FakeTrackRepository : TrackRepository {
 
 class FakeLocalAudioStorage : LocalAudioStorage {
     val files = mutableSetOf<String>()
+    var failDelete: Boolean = false
     
     override suspend fun save(source: File, destinationName: String): StorageResult {
         val uri = "file://$destinationName"
@@ -47,6 +48,7 @@ class FakeLocalAudioStorage : LocalAudioStorage {
     }
 
     override suspend fun delete(uri: String): Boolean {
+        if (failDelete) return false
         return files.remove(uri)
     }
 
@@ -56,25 +58,103 @@ class FakeLocalAudioStorage : LocalAudioStorage {
     override suspend fun listAudioFiles(): List<String> = files.toList()
 }
 
+class FakeAudioPlayer : com.example.privatemusiclibrary.domain.player.AudioPlayer {
+    val preparedDeletionTrackIds = mutableListOf<String>()
+    var currentTrackId: String? = null
+    val queueTrackIds = mutableListOf<String>()
+    var playbackStopped: Boolean = false
+
+    private val _playerState = kotlinx.coroutines.flow.MutableStateFlow(
+        com.example.privatemusiclibrary.domain.player.PlayerState()
+    )
+    override val playerState: kotlinx.coroutines.flow.StateFlow<com.example.privatemusiclibrary.domain.player.PlayerState> = _playerState
+
+    fun setCurrentTrack(track: Track?) {
+        currentTrackId = track?.id
+        _playerState.value = _playerState.value.copy(currentTrack = track)
+    }
+
+    override fun setQueue(tracks: List<Track>) {
+        queueTrackIds.clear()
+        queueTrackIds.addAll(tracks.map { it.id })
+        _playerState.value = _playerState.value.copy(queue = tracks)
+    }
+
+    override fun addToQueue(track: Track) {
+        queueTrackIds.add(track.id)
+        _playerState.value = _playerState.value.copy(queue = _playerState.value.queue + track)
+    }
+
+    override fun removeFromQueue(index: Int) {
+        if (index in queueTrackIds.indices) {
+            queueTrackIds.removeAt(index)
+            val mutableList = _playerState.value.queue.toMutableList()
+            mutableList.removeAt(index)
+            _playerState.value = _playerState.value.copy(queue = mutableList)
+        }
+    }
+
+    override fun clearQueue() {
+        queueTrackIds.clear()
+        _playerState.value = _playerState.value.copy(queue = emptyList())
+    }
+
+    override suspend fun prepareForTrackDeletion(trackId: String) {
+        preparedDeletionTrackIds.add(trackId)
+        if (currentTrackId == trackId) {
+            playbackStopped = true
+            currentTrackId = null
+            queueTrackIds.remove(trackId)
+            _playerState.value = _playerState.value.copy(
+                currentTrack = null,
+                queue = _playerState.value.queue.filter { it.id != trackId }
+            )
+        } else if (queueTrackIds.contains(trackId)) {
+            queueTrackIds.remove(trackId)
+            _playerState.value = _playerState.value.copy(
+                queue = _playerState.value.queue.filter { it.id != trackId }
+            )
+        }
+    }
+
+    override fun playQueue(tracks: List<Track>, startIndex: Int) {
+        setQueue(tracks)
+        val selected = tracks.getOrNull(startIndex)
+        setCurrentTrack(selected)
+    }
+    override fun pause() {}
+    override fun resume() {}
+    override fun seekTo(positionMs: Long) {}
+    override fun skipNext() {}
+    override fun skipPrevious() {}
+    override fun setShuffle(enabled: Boolean) {}
+    override fun setRepeatMode(mode: com.example.privatemusiclibrary.domain.player.RepeatMode) {}
+    override fun release() {}
+}
+
 class UseCaseTest {
     private lateinit var trackRepository: FakeTrackRepository
     private lateinit var localStorage: FakeLocalAudioStorage
+    private lateinit var audioPlayer: FakeAudioPlayer
 
     @Before
     fun setup() {
         trackRepository = FakeTrackRepository()
         localStorage = FakeLocalAudioStorage()
+        audioPlayer = FakeAudioPlayer()
     }
+
+    private fun createTrack(id: String, localUri: String = "file://$id.mp3") = Track(
+        id = id, title = "Test $id", artist = "Artist", creator = null,
+        album = null, thumbnailUri = null, sourceUrl = null, sourcePlatform = null,
+        sourceId = null, localUri = localUri, mimeType = "audio/mpeg",
+        durationMs = 1000L, fileSizeBytes = 1024L, dateAdded = 1L, lastPlayedAt = null,
+        playbackPositionMs = 0L, isFavorite = false, folderId = null, createdAt = 1L, updatedAt = 1L
+    )
 
     @Test
     fun testFavoriteUseCases() = runBlocking {
-        val track = Track(
-            id = "t1", title = "Test", artist = null, creator = null,
-            album = null, thumbnailUri = null, sourceUrl = null, sourcePlatform = null,
-            sourceId = null, localUri = "file://t1.mp3", mimeType = "audio/mpeg",
-            durationMs = 1000L, fileSizeBytes = 1024L, dateAdded = 1L, lastPlayedAt = null,
-            playbackPositionMs = 0L, isFavorite = false, folderId = null, createdAt = 1L, updatedAt = 1L
-        )
+        val track = createTrack("t1")
         trackRepository.insert(track)
         
         val addFavorite = AddFavoriteUseCase(trackRepository)
@@ -88,22 +168,119 @@ class UseCaseTest {
 
     @Test
     fun testDeleteTrackUseCase() = runBlocking {
-        val track = Track(
-            id = "t1", title = "Test", artist = null, creator = null,
-            album = null, thumbnailUri = null, sourceUrl = null, sourcePlatform = null,
-            sourceId = null, localUri = "file://t1.mp3", mimeType = "audio/mpeg",
-            durationMs = 1000L, fileSizeBytes = 1024L, dateAdded = 1L, lastPlayedAt = null,
-            playbackPositionMs = 0L, isFavorite = false, folderId = null, createdAt = 1L, updatedAt = 1L
-        )
+        val track = createTrack("t1", "file://t1.mp3")
         trackRepository.insert(track)
         localStorage.files.add("file://t1.mp3")
         
-        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage)
+        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage, audioPlayer)
         val success = deleteTrack("t1")
         
         assertTrue(success)
         assertNull(trackRepository.getById("t1"))
         assertFalse(localStorage.exists("file://t1.mp3"))
+        assertTrue(audioPlayer.preparedDeletionTrackIds.contains("t1"))
+    }
+
+    @Test
+    fun testDeleteTrackUseCase_activeTrack_stopsPlaybackAndEvictsBeforeDeleting() = runBlocking {
+        val playingTrack = createTrack("active_1", "file://active_1.mp3")
+        val otherTrack = createTrack("queued_2", "file://queued_2.mp3")
+        trackRepository.insert(playingTrack)
+        trackRepository.insert(otherTrack)
+        localStorage.files.add(playingTrack.localUri)
+        localStorage.files.add(otherTrack.localUri)
+
+        audioPlayer.setCurrentTrack(playingTrack)
+        audioPlayer.setQueue(listOf(playingTrack, otherTrack))
+
+        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage, audioPlayer)
+        val result = deleteTrack(playingTrack)
+
+        assertTrue(result)
+        // Playback for active track must be halted and track evicted
+        assertTrue(audioPlayer.playbackStopped)
+        assertNull(audioPlayer.currentTrackId)
+        assertFalse(audioPlayer.queueTrackIds.contains("active_1"))
+        assertTrue(audioPlayer.queueTrackIds.contains("queued_2"))
+        // Local file and DB must be deleted
+        assertFalse(localStorage.exists(playingTrack.localUri))
+        assertNull(trackRepository.getById("active_1"))
+        // Unrelated track must remain untouched
+        assertNotNull(trackRepository.getById("queued_2"))
+        assertTrue(localStorage.exists(otherTrack.localUri))
+    }
+
+    @Test
+    fun testDeleteTrackUseCase_queuedTrack_evictsFromQueueWithoutStoppingActivePlayback() = runBlocking {
+        val playingTrack = createTrack("active_1", "file://active_1.mp3")
+        val queuedTrack = createTrack("queued_2", "file://queued_2.mp3")
+        trackRepository.insert(playingTrack)
+        trackRepository.insert(queuedTrack)
+        localStorage.files.add(playingTrack.localUri)
+        localStorage.files.add(queuedTrack.localUri)
+
+        audioPlayer.setCurrentTrack(playingTrack)
+        audioPlayer.setQueue(listOf(playingTrack, queuedTrack))
+
+        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage, audioPlayer)
+        val result = deleteTrack(queuedTrack)
+
+        assertTrue(result)
+        // Active playback should NOT be stopped
+        assertFalse(audioPlayer.playbackStopped)
+        assertEquals("active_1", audioPlayer.currentTrackId)
+        // Only the deleted track is removed from queue
+        assertFalse(audioPlayer.queueTrackIds.contains("queued_2"))
+        assertTrue(audioPlayer.queueTrackIds.contains("active_1"))
+        // Queued track file and DB deleted
+        assertFalse(localStorage.exists(queuedTrack.localUri))
+        assertNull(trackRepository.getById("queued_2"))
+        // Playing track untouched
+        assertNotNull(trackRepository.getById("active_1"))
+    }
+
+    @Test
+    fun testDeleteTrackUseCase_nonPlayingTrack_deletesStorageAndRepository() = runBlocking {
+        val nonPlayingTrack = createTrack("idle_3", "file://idle_3.mp3")
+        trackRepository.insert(nonPlayingTrack)
+        localStorage.files.add(nonPlayingTrack.localUri)
+
+        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage, audioPlayer)
+        val result = deleteTrack(nonPlayingTrack)
+
+        assertTrue(result)
+        assertTrue(audioPlayer.preparedDeletionTrackIds.contains("idle_3"))
+        assertFalse(localStorage.exists(nonPlayingTrack.localUri))
+        assertNull(trackRepository.getById("idle_3"))
+    }
+
+    @Test
+    fun testDeleteTrackUseCase_failedStorageDeletion_preservesDatabaseRecord() = runBlocking {
+        val track = createTrack("t_fail", "file://t_fail.mp3")
+        trackRepository.insert(track)
+        localStorage.files.add(track.localUri)
+        localStorage.failDelete = true // Storage deletion fails while file still exists
+
+        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage, audioPlayer)
+        val result = deleteTrack(track)
+
+        assertFalse(result) // Operation fails
+        // Critical: DB record MUST be preserved so app doesn't lose track of existing file on disk
+        assertNotNull(trackRepository.getById("t_fail"))
+        assertTrue(localStorage.exists(track.localUri))
+    }
+
+    @Test
+    fun testDeleteTrackUseCase_fileAlreadyAbsent_cleansUpOrphanDatabaseRecord() = runBlocking {
+        val orphanTrack = createTrack("t_orphan", "file://t_orphan.mp3")
+        trackRepository.insert(orphanTrack)
+        // File does not exist in localStorage
+
+        val deleteTrack = DeleteTrackUseCase(trackRepository, localStorage, audioPlayer)
+        val result = deleteTrack(orphanTrack)
+
+        assertTrue(result) // Since file doesn't exist, successfully cleans up DB record
+        assertNull(trackRepository.getById("t_orphan"))
     }
     
     // Note: The ScanLocalAudioUseCase is fully tested below using Fakes!

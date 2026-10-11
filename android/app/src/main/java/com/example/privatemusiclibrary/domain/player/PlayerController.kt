@@ -48,4 +48,5 @@ class PlayerController @Inject constructor(
     fun setShuffle(enabled: Boolean) = audioPlayer.setShuffle(enabled)
     fun setRepeatMode(mode: RepeatMode) = audioPlayer.setRepeatMode(mode)
     fun release() = audioPlayer.release()
+    suspend fun prepareForTrackDeletion(trackId: String) = audioPlayer.prepareForTrackDeletion(trackId)
 }

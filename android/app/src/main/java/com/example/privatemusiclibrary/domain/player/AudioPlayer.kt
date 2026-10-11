@@ -35,4 +35,5 @@ interface AudioPlayer {
     fun setShuffle(enabled: Boolean)
     fun setRepeatMode(mode: RepeatMode)
     fun release()
+    suspend fun prepareForTrackDeletion(trackId: String)
 }

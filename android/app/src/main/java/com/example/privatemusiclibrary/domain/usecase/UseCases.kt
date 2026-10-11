@@ -58,23 +58,30 @@ class RemoveFavoriteUseCase @Inject constructor(
 
 class DeleteTrackUseCase @Inject constructor(
     private val trackRepository: TrackRepository,
-    private val localAudioStorage: LocalAudioStorage
+    private val localAudioStorage: LocalAudioStorage,
+    private val audioPlayer: com.example.privatemusiclibrary.domain.player.AudioPlayer
 ) {
-    suspend operator fun invoke(trackId: String): Boolean {
-        val track = trackRepository.getById(trackId) ?: return false
-        
+    suspend operator fun invoke(track: Track): Boolean {
+        // Stop playback and evict track from player before touching storage on disk
+        audioPlayer.prepareForTrackDeletion(track.id)
+
         // Delete local file first
         val deleted = localAudioStorage.delete(track.localUri)
         if (!deleted) {
-            // Check if it exists at all
+            // Check if file still exists in storage
             if (localAudioStorage.exists(track.localUri)) {
-                return false // Could not delete existing file
+                return false // Could not delete existing file: preserve DB record to prevent state inconsistency
             }
         }
-        
-        // Delete database record
+
+        // Delete database record only after storage file is confirmed deleted or absent
         trackRepository.delete(track)
         return true
+    }
+
+    suspend operator fun invoke(trackId: String): Boolean {
+        val track = trackRepository.getById(trackId) ?: return false
+        return invoke(track)
     }
 }
 

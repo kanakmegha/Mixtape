@@ -14,12 +14,16 @@ import com.example.privatemusiclibrary.domain.player.RepeatMode
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -135,6 +139,65 @@ class Media3AudioPlayer @Inject constructor(
     override fun release() {
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controller?.removeListener(this)
+    }
+
+    override suspend fun prepareForTrackDeletion(trackId: String): Unit = withContext(Dispatchers.Main) {
+        val c = controller
+        val isCurrent = queueTracks.getOrNull(c?.currentMediaItemIndex ?: -1)?.id == trackId ||
+                c?.currentMediaItem?.mediaId == trackId ||
+                _playerState.value.currentTrack?.id == trackId
+
+        val isQueued = queueTracks.any { it.id == trackId }
+
+        if (!isCurrent && !isQueued) {
+            return@withContext
+        }
+
+        if (isCurrent) {
+            // Stop playback first so audio rendering halts immediately
+            c?.stop()
+
+            if (queueTracks.size <= 1) {
+                // If it was the only track, clear the entire queue
+                queueTracks = emptyList()
+                c?.clearMediaItems()
+            } else {
+                // Remove all occurrences of this track from queue
+                val indicesToRemove = queueTracks.indices.filter { queueTracks[it].id == trackId }.reversed()
+                val mutableList = queueTracks.toMutableList()
+                for (idx in indicesToRemove) {
+                    mutableList.removeAt(idx)
+                    c?.removeMediaItem(idx)
+                }
+                queueTracks = mutableList
+            }
+            updateState()
+            coordinatePlayerRelease(trackId)
+        } else {
+            // Queued track, not currently playing:
+            // Remove from queue without interrupting currently playing track or wiping the queue
+            val indicesToRemove = queueTracks.indices.filter { queueTracks[it].id == trackId }.reversed()
+            val mutableList = queueTracks.toMutableList()
+            for (idx in indicesToRemove) {
+                mutableList.removeAt(idx)
+                c?.removeMediaItem(idx)
+            }
+            queueTracks = mutableList
+            updateState()
+            coordinatePlayerRelease(trackId)
+        }
+    }
+
+    private suspend fun coordinatePlayerRelease(trackId: String) {
+        try {
+            withTimeoutOrNull(1000L) {
+                playerState.first { state ->
+                    state.currentTrack?.id != trackId && state.queue.none { it.id == trackId }
+                }
+            }
+        } catch (_: Exception) {}
+        // Yield to allow ExoPlayer background playback thread to release media sources and close file descriptors
+        delay(150L)
     }
 
     // Player.Listener methods
