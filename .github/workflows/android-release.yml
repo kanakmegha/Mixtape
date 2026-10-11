@@ -57,7 +57,7 @@ jobs:
           MIXTAPE_KEY_PASSWORD: ${{ secrets.MIXTAPE_KEY_PASSWORD }}
         run: |
           VERSION_NAME="${GITHUB_REF_NAME#v}"
-          VERSION_CODE="$((100 + GITHUB_RUN_NUMBER))"
+          VERSION_CODE="$((10000 + GITHUB_RUN_NUMBER))"
           ./gradlew --no-daemon testDebugUnitTest assembleRelease \
             -Pmixtape.versionCode="$VERSION_CODE" \
             -Pmixtape.versionName="$VERSION_NAME"
