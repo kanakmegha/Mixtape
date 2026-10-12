@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -21,6 +22,53 @@ fun signingValue(key: String, env: String): String? =
     keystoreProps.getProperty(key) ?: System.getenv(env)
 val releaseStoreFile = signingValue("storeFile", "MIXTAPE_KEYSTORE_PATH")
 
+val stagingBaseUrlProp = (project.findProperty("mixtapeStagingBaseUrl") as String?)
+    ?: System.getenv("MIXTAPE_STAGING_BASE_URL")
+val isStagingConfigured = !stagingBaseUrlProp.isNullOrBlank()
+val stagingUrl = if (isStagingConfigured) {
+    if (stagingBaseUrlProp!!.endsWith("/")) stagingBaseUrlProp else "$stagingBaseUrlProp/"
+} else {
+    "https://staging-unconfigured.mixtape.internal/api/"
+}
+
+// Production API URL handling: defaults to official production backend on Vercel.
+// Can be overridden via Gradle property -PmixtapeApiBaseUrl=<url> or env MIXTAPE_API_BASE_URL
+// for safe local/staging testing without touching production data or deploying premature migrations.
+val defaultProductionApiUrl = "https://backend-woad-xi-54.vercel.app/api/"
+val rawApiBaseUrl = (project.findProperty("mixtapeApiBaseUrl") as String?)
+    ?: System.getenv("MIXTAPE_API_BASE_URL")
+
+val isApiBaseUrlOverridden = project.hasProperty("mixtapeApiBaseUrl") || System.getenv("MIXTAPE_API_BASE_URL") != null
+
+val productionApiUrl: String = if (isApiBaseUrlOverridden) {
+    val trimmed = rawApiBaseUrl?.trim() ?: ""
+    if (trimmed.isEmpty()) {
+        throw GradleException(
+            "Gradle property 'mixtapeApiBaseUrl' was specified but is empty. " +
+            "Please provide a valid test backend URL (e.g. http://192.168.1.83:8081/api/) or omit the property to use production."
+        )
+    }
+    try {
+        val uri = URI(trimmed)
+        if (uri.scheme != "http" && uri.scheme != "https") {
+            throw GradleException(
+                "Property 'mixtapeApiBaseUrl' must start with http:// or https:// (received: '$trimmed')"
+            )
+        }
+        if (uri.host.isNullOrBlank()) {
+            throw GradleException(
+                "Property 'mixtapeApiBaseUrl' must contain a valid host name or IP address (received: '$trimmed')"
+            )
+        }
+    } catch (e: Exception) {
+        if (e is GradleException) throw e
+        throw GradleException("Property 'mixtapeApiBaseUrl' is not a valid URL: '$trimmed'. Cause: ${e.message}")
+    }
+    if (trimmed.endsWith("/")) trimmed else "$trimmed/"
+} else {
+    defaultProductionApiUrl
+}
+
 android {
     namespace = "com.example.privatemusiclibrary"
     compileSdk = 36
@@ -35,11 +83,33 @@ android {
         abiFilters += listOf("arm64-v8a")
       }
 
+      manifestPlaceholders["usesCleartextTraffic"] = "false"
+
       // Bump versionCode for EVERY distributed release (must strictly increase).
-      versionCode = (project.findProperty("mixtape.versionCode") as String?)?.toInt() ?: 2
-      versionName = (project.findProperty("mixtape.versionName") as String?) ?: "1.0.1"
+      versionCode = (project.findProperty("mixtape.versionCode") as String?)?.toInt() ?: 10005
+      versionName = (project.findProperty("mixtape.versionName") as String?) ?: "1.0.6"
     }
 
+    flavorDimensions += listOf("environment")
+    productFlavors {
+        create("production") {
+            dimension = "environment"
+            // Production keeps the base applicationId "com.example.privatemusiclibrary"
+            buildConfigField("String", "AUDIO_STORAGE_DIRECTORY", "\"Mixtape\"")
+            buildConfigField("String", "AUDIO_RELATIVE_PATH", "\"Music/Mixtape/\"")
+            buildConfigField("Boolean", "IS_BACKEND_CONFIGURED", "true")
+            buildConfigField("String", "STAGING_API_BASE_URL", "\"\"")
+        }
+
+        create("internal") {
+            dimension = "environment"
+            applicationId = "com.example.privatemusiclibrary.internal"
+            buildConfigField("String", "AUDIO_STORAGE_DIRECTORY", "\"Mixtape-Test\"")
+            buildConfigField("String", "AUDIO_RELATIVE_PATH", "\"Music/Mixtape-Test/\"")
+            buildConfigField("Boolean", "IS_BACKEND_CONFIGURED", "$isStagingConfigured")
+            buildConfigField("String", "STAGING_API_BASE_URL", "\"$stagingUrl\"")
+        }
+    }
 
     signingConfigs {
         if (releaseStoreFile != null) {
@@ -54,6 +124,7 @@ android {
 
     buildTypes {
         debug {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
             buildConfigField("String", "API_BASE_URL", "\"http://192.168.1.83:8081/api/\"")
         }
 
@@ -63,8 +134,10 @@ android {
           proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
           // Unsigned if no keystore is configured; never falls back to the debug key.
           signingConfig = signingConfigs.findByName("release")
-          // Production API (public HTTPS, Vercel). Contains no secrets.
-          buildConfigField("String", "API_BASE_URL", "\"https://backend-woad-xi-54.vercel.app/api/\"")
+          // Production API URL: uses official production URL when mixtapeApiBaseUrl is omitted,
+          // or the validated test backend URL when explicitly supplied.
+          buildConfigField("String", "API_BASE_URL", "\"$productionApiUrl\"")
+          manifestPlaceholders["usesCleartextTraffic"] = if (productionApiUrl.startsWith("http://")) "true" else "false"
       }
 
     }
@@ -126,9 +199,10 @@ dependencies {
   androidTestImplementation(libs.androidx.compose.ui.test.junit4)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-  // Local tests: jUnit, coroutines, Android runner
+  // Local tests: jUnit, coroutines, Android runner, SQLite JDBC
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation("org.xerial:sqlite-jdbc:3.45.1.0")
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)
@@ -175,4 +249,36 @@ dependencies {
   implementation("androidx.security:security-crypto-ktx:1.1.0-alpha06")
   // XZ compression support required by Apache Commons Compress
   implementation("org.tukaani:xz:1.10")
+}
+
+// Preserve backwards-compatible release APK path expected by CI and docs (app/build/outputs/apk/release/app-release.apk)
+tasks.register<Copy>("copyLegacyReleaseApk") {
+    from(layout.buildDirectory.dir("outputs/apk/production/release"))
+    into(layout.buildDirectory.dir("outputs/apk/release"))
+    include("app-production-release.apk")
+    rename { "app-release.apk" }
+}
+
+tasks.register<Copy>("copyLegacyReleaseUnsignedApk") {
+    from(layout.buildDirectory.dir("outputs/apk/production/release"))
+    into(layout.buildDirectory.dir("outputs/apk/release"))
+    include("app-production-release-unsigned.apk")
+    rename { "app-release-unsigned.apk" }
+}
+
+tasks.matching { it.name == "assembleProductionRelease" || it.name == "assembleRelease" }.configureEach {
+    finalizedBy("copyLegacyReleaseApk", "copyLegacyReleaseUnsignedApk")
+}
+
+// Explicit testDebugUnitTest task to preserve backwards compatibility with CI and scripts
+tasks.register("testDebugUnitTest") {
+    description = "Runs unit tests for all debug variants (productionDebug and internalDebug)."
+    group = "verification"
+    dependsOn("testProductionDebugUnitTest", "testInternalDebugUnitTest")
+}
+
+tasks.register("testReleaseUnitTest") {
+    description = "Runs unit tests for release variants or delegates to testDebugUnitTest."
+    group = "verification"
+    dependsOn("testDebugUnitTest")
 }

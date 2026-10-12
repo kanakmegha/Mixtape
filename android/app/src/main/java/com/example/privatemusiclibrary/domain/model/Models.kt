@@ -20,7 +20,9 @@ data class Track(
     val isFavorite: Boolean,
     val folderId: String?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val trackKey: String = "",
+    val isLocalAvailable: Boolean = true
 )
 
 data class Folder(
@@ -34,8 +36,19 @@ data class Playlist(
     val name: String,
     val description: String?,
     val artworkUri: String?,
-    val createdAt: Long
+    val createdAt: Long,
+    val updatedAt: Long = createdAt,
+    val isDeleted: Boolean = false
 )
+
+sealed class SyncStatus {
+    object Idle : SyncStatus()
+    object Syncing : SyncStatus()
+    object Synced : SyncStatus()
+    object WaitingForNetwork : SyncStatus()
+    data class PendingChanges(val count: Int) : SyncStatus()
+    data class Error(val message: String) : SyncStatus()
+}
 
 enum class ImportJobStatus {
     QUEUED, VALIDATING, RESOLVING, DOWNLOADING, CONVERTING, SAVING, COMPLETED, FAILED, CANCELLED;
@@ -72,5 +85,6 @@ data class AppSettings(
     val storageUri: String? = null,
     val defaultPlaybackSpeed: Float = 1.0f,
     val defaultAudioQuality: String = "192k",
-    val resumePlayback: Boolean = true
+    val resumePlayback: Boolean = true,
+    val isStorageConfirmed: Boolean = false
 )

@@ -31,7 +31,7 @@ class DefaultTrackRepository @Inject constructor(
     override fun observeFavorites(): Flow<List<Track>> = trackDao.observeFavorites().map { it.map { t -> t.toDomain() } }
     override fun observeRecentlyAdded(): Flow<List<Track>> = trackDao.observeRecentlyAdded().map { it.map { t -> t.toDomain() } }
     override fun observeRecentlyPlayed(): Flow<List<Track>> = trackDao.observeRecentlyPlayed().map { it.map { t -> t.toDomain() } }
-    
+
     override suspend fun getById(id: String): Track? = trackDao.getById(id)?.toDomain()
     override suspend fun insert(track: Track) { trackDao.insert(track.toEntity()) }
     override suspend fun update(track: Track) { trackDao.update(track.toEntity()) }
@@ -51,37 +51,57 @@ class DefaultFolderRepository @Inject constructor(
 
 class DefaultPlaylistRepository @Inject constructor(
     private val playlistDao: PlaylistDao,
-    private val playlistTrackDao: PlaylistTrackDao
+    private val playlistTrackDao: PlaylistTrackDao,
+    private val syncTombstoneDao: com.example.privatemusiclibrary.database.SyncTombstoneDao
 ) : PlaylistRepository {
     override fun observeAll(): Flow<List<Playlist>> = playlistDao.observeAll().map { it.map { p -> p.toDomain() } }
     override fun observeById(id: String): Flow<Playlist?> = playlistDao.observeById(id).map { it?.toDomain() }
     override suspend fun getById(id: String): Playlist? = playlistDao.getById(id)?.toDomain()
-    override suspend fun insert(playlist: Playlist) { playlistDao.insert(playlist.toEntity()) }
-    override suspend fun update(playlist: Playlist) { playlistDao.update(playlist.toEntity()) }
-    override suspend fun delete(playlist: Playlist) { playlistDao.delete(playlist.toEntity()) }
-    
+    override suspend fun insert(playlist: Playlist) {
+        playlistDao.insert(playlist.toEntity().copy(updatedAt = System.currentTimeMillis()))
+    }
+    override suspend fun update(playlist: Playlist) {
+        playlistDao.update(playlist.toEntity().copy(updatedAt = System.currentTimeMillis()))
+    }
+    override suspend fun delete(playlist: Playlist) {
+        syncTombstoneDao.insert(
+            com.example.privatemusiclibrary.database.SyncTombstoneEntity(
+                "playlist",
+                playlist.id,
+                System.currentTimeMillis()
+            )
+        )
+        playlistDao.delete(playlist.toEntity())
+    }
+
     override fun observeTracksForPlaylist(playlistId: String): Flow<List<Track>> {
         return playlistTrackDao.observeTracksForPlaylist(playlistId).map { it.map { t -> t.toDomain() } }
     }
-    
+
     override fun observePlaylistsForTrack(trackId: String): Flow<List<String>> {
         return playlistTrackDao.observePlaylistsForTrack(trackId)
     }
-    
+
     override fun observeTrackCount(playlistId: String): Flow<Int> {
         return playlistTrackDao.observeTrackCount(playlistId)
     }
 
     override suspend fun addTrackToPlaylist(playlistId: String, trackId: String, position: Int) {
         playlistTrackDao.insert(PlaylistTrackEntity(playlistId, trackId, position))
+        val p = playlistDao.getById(playlistId)
+        if (p != null) playlistDao.update(p.copy(updatedAt = System.currentTimeMillis()))
     }
-    
+
     override suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
         playlistTrackDao.removeTrack(playlistId, trackId)
+        val p = playlistDao.getById(playlistId)
+        if (p != null) playlistDao.update(p.copy(updatedAt = System.currentTimeMillis()))
     }
-    
+
     override suspend fun updateTrackPosition(playlistId: String, trackId: String, position: Int) {
         playlistTrackDao.updatePosition(playlistId, trackId, position)
+        val p = playlistDao.getById(playlistId)
+        if (p != null) playlistDao.update(p.copy(updatedAt = System.currentTimeMillis()))
     }
 }
 
@@ -103,17 +123,25 @@ class DefaultImportJobRepository @Inject constructor(
 }
 
 class DefaultSettingsRepository @Inject constructor(
-    private val appSettingsDao: AppSettingsDao
+    private val appSettingsDao: AppSettingsDao,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : SettingsRepository {
-    override fun observeSettings(): Flow<AppSettings> = appSettingsDao.observeSettings().map { 
-        it.firstOrNull()?.toDomain() ?: AppSettings(null, 1.0f, "192k", true)
+    private val prefs = context.getSharedPreferences("mixtape_storage_prefs", android.content.Context.MODE_PRIVATE)
+
+    override fun observeSettings(): Flow<AppSettings> = appSettingsDao.observeSettings().map {
+        val base = it.firstOrNull()?.toDomain() ?: AppSettings(null, 1.0f, "192k", true)
+        val confirmed = prefs.getBoolean("storage_confirmed", false) || !base.storageUri.isNullOrBlank()
+        base.copy(isStorageConfirmed = confirmed)
     }
-    
+
     override suspend fun getSettings(): AppSettings {
-        return appSettingsDao.getSettings()?.toDomain() ?: AppSettings(null, 1.0f, "192k", true)
+        val base = appSettingsDao.getSettings()?.toDomain() ?: AppSettings(null, 1.0f, "192k", true)
+        val confirmed = prefs.getBoolean("storage_confirmed", false) || !base.storageUri.isNullOrBlank()
+        return base.copy(isStorageConfirmed = confirmed)
     }
-    
+
     override suspend fun updateSettings(settings: AppSettings) {
+        prefs.edit().putBoolean("storage_confirmed", settings.isStorageConfirmed).apply()
         appSettingsDao.insertOrUpdate(settings.toEntity())
     }
 }

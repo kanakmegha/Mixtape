@@ -14,7 +14,8 @@ import androidx.room.Index
         Index("isFavorite"),
         Index("folderId"),
         Index("dateAdded"),
-        Index("lastPlayedAt")
+        Index("lastPlayedAt"),
+        Index("trackKey")
     ]
 )
 data class TrackEntity(
@@ -37,5 +38,7 @@ data class TrackEntity(
     val isFavorite: Boolean,
     val folderId: String?,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
+    val trackKey: String = "",
+    val isLocalAvailable: Boolean = true
 )

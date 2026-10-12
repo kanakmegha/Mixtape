@@ -368,6 +368,180 @@ class ScannerTest {
         scanLocalAudioUseCase()
         assertEquals(2, trackRepository.getAllTracks().size)
     }
+
+    private fun createTrack(id: String, localUri: String = "file://$id.mp3") = Track(
+        id = id, title = "Test $id", artist = "Artist", creator = null,
+        album = null, thumbnailUri = null, sourceUrl = null, sourcePlatform = null,
+        sourceId = null, localUri = localUri, mimeType = "audio/mpeg",
+        durationMs = 1000L, fileSizeBytes = 1024L, dateAdded = 1L, lastPlayedAt = null,
+        playbackPositionMs = 0L, isFavorite = false, folderId = null, createdAt = 1L, updatedAt = 1L
+    )
+
+    @Test
+    fun testDuplicatePreventionByMetadataWhenUriDiffers() = runBlocking {
+        // Track exists in DB from previous SAF import
+        val existingTrack = createTrack("saf_track_1", "content://tree/primary:Music/song1.mp3").copy(
+            title = "Starboy",
+            artist = "The Weeknd",
+            durationMs = 230000L
+        )
+        trackRepository.insert(existingTrack)
+
+        // Storage scanner finds same track in Music/Mixtape via MediaStore content URI
+        val mediaStoreUri = "content://media/external/audio/media/4567"
+        localStorage.files.add(mediaStoreUri)
+        metadataExtractor.metadataMap[mediaStoreUri] = AudioMetadata(
+            title = "Starboy",
+            artist = "The Weeknd",
+            album = "Starboy",
+            durationMs = 230000L,
+            mimeType = "audio/mpeg",
+            sizeBytes = 5000000L
+        )
+
+        scanLocalAudioUseCase()
+
+        // Should not insert duplicate track
+        val allTracks = trackRepository.getAllTracks()
+        assertEquals(1, allTracks.size)
+        assertEquals("saf_track_1", allTracks[0].id)
+        assertEquals("content://tree/primary:Music/song1.mp3", allTracks[0].localUri)
+    }
+
+    @Test
+    fun testDiscoveryOfMediaStoreTracksInMusicMixtape() = runBlocking {
+        val mediaStoreUri = "content://media/external/audio/media/9876"
+        localStorage.files.add(mediaStoreUri)
+        metadataExtractor.metadataMap[mediaStoreUri] = AudioMetadata(
+            title = "Blinding Lights",
+            artist = "The Weeknd",
+            album = "After Hours",
+            durationMs = 200000L,
+            mimeType = "audio/mpeg",
+            sizeBytes = 4000000L
+        )
+
+        scanLocalAudioUseCase()
+
+        val allTracks = trackRepository.getAllTracks()
+        assertEquals(1, allTracks.size)
+        assertEquals("Blinding Lights", allTracks[0].title)
+        assertEquals(mediaStoreUri, allTracks[0].localUri)
+    }
+
+    @Test
+    fun testMixedStorageSafAndMediaStoreTracksCoexist() = runBlocking {
+        // Existing SAF track
+        val safTrack = createTrack("saf_1", "content://tree/primary:Music/saf_song.mp3").copy(
+            title = "SAF Song",
+            artist = "Artist A",
+            durationMs = 180000L
+        )
+        trackRepository.insert(safTrack)
+        localStorage.files.add("content://tree/primary:Music/saf_song.mp3")
+
+        // New MediaStore track in Music/Mixtape/
+        val mediaStoreUri = "content://media/external/audio/media/1111"
+        localStorage.files.add(mediaStoreUri)
+        metadataExtractor.metadataMap[mediaStoreUri] = AudioMetadata(
+            title = "MediaStore Song",
+            artist = "Artist B",
+            album = null,
+            durationMs = 210000L,
+            mimeType = "audio/mpeg",
+            sizeBytes = 3500000L
+        )
+
+        scanLocalAudioUseCase()
+
+        val allTracks = trackRepository.getAllTracks()
+        assertEquals(2, allTracks.size)
+        assertTrue(allTracks.any { it.localUri == "content://tree/primary:Music/saf_song.mp3" })
+        assertTrue(allTracks.any { it.localUri == mediaStoreUri })
+    }
+
+    @Test
+    fun testDifferentSongsWithSameTitleDifferentArtistNotTreatedAsDuplicate() = runBlocking {
+        val track1 = createTrack("t1", "content://media/external/audio/media/1").copy(
+            title = "Hello",
+            artist = "Adele",
+            durationMs = 295000L
+        )
+        trackRepository.insert(track1)
+
+        val track2Uri = "content://media/external/audio/media/2"
+        localStorage.files.add(track2Uri)
+        metadataExtractor.metadataMap[track2Uri] = AudioMetadata(
+            title = "Hello",
+            artist = "Lionel Richie",
+            album = null,
+            durationMs = 248000L,
+            mimeType = "audio/mpeg",
+            sizeBytes = 3000000L
+        )
+
+        scanLocalAudioUseCase()
+
+        val allTracks = trackRepository.getAllTracks()
+        assertEquals(2, allTracks.size)
+    }
+}
+
+class FakeSettingsRepo : com.example.privatemusiclibrary.domain.repository.SettingsRepository {
+    var settings = com.example.privatemusiclibrary.domain.model.AppSettings()
+    private val flow = kotlinx.coroutines.flow.MutableStateFlow(settings)
+
+    override fun observeSettings(): Flow<com.example.privatemusiclibrary.domain.model.AppSettings> = flow
+    override suspend fun getSettings(): com.example.privatemusiclibrary.domain.model.AppSettings = settings
+    override suspend fun updateSettings(newSettings: com.example.privatemusiclibrary.domain.model.AppSettings) {
+        settings = newSettings
+        flow.value = newSettings
+    }
+}
+
+class StorageSettingsUseCaseTest {
+    private lateinit var settingsRepository: FakeSettingsRepo
+
+    @Before
+    fun setup() {
+        settingsRepository = FakeSettingsRepo()
+    }
+
+    @Test
+    fun testSetStorageLocationUseCase_setsUriAndConfirms() = runBlocking {
+        val useCase = SetStorageLocationUseCase(settingsRepository)
+        useCase("content://tree/custom")
+
+        val current = settingsRepository.getSettings()
+        assertEquals("content://tree/custom", current.storageUri)
+        assertTrue(current.isStorageConfirmed)
+    }
+
+    @Test
+    fun testConfirmStorageLocationUseCase_confirmsWithoutChangingUri() = runBlocking {
+        val useCase = ConfirmStorageLocationUseCase(settingsRepository)
+        useCase()
+
+        val current = settingsRepository.getSettings()
+        assertNull(current.storageUri)
+        assertTrue(current.isStorageConfirmed)
+    }
+
+    @Test
+    fun testResetStorageLocationUseCase_resetsToDefault() = runBlocking {
+        settingsRepository.updateSettings(
+            com.example.privatemusiclibrary.domain.model.AppSettings(
+                storageUri = "content://tree/custom",
+                isStorageConfirmed = true
+            )
+        )
+        val useCase = ResetStorageLocationUseCase(settingsRepository)
+        useCase()
+
+        val current = settingsRepository.getSettings()
+        assertNull(current.storageUri)
+        assertTrue(current.isStorageConfirmed)
+    }
 }
 
 
@@ -422,6 +596,28 @@ class ValidateUrlUseCaseTest {
         assertTrue(result is ValidateUrlUseCase.ValidationResult.Invalid)
         assertEquals(
             "This source isn't supported yet.",
+            (result as ValidateUrlUseCase.ValidationResult.Invalid).reason
+        )
+    }
+
+    @Test
+    fun testValidInstagramReel() {
+        val useCase = ValidateUrlUseCase(setOf(fakeExtractor(true)))
+
+        val result = useCase("https://www.instagram.com/reel/DCqQkQ3I123/?igsh=abc")
+
+        assertTrue(result is ValidateUrlUseCase.ValidationResult.Valid)
+    }
+
+    @Test
+    fun testInstagramProfileUnsupportedReason() {
+        val useCase = ValidateUrlUseCase(setOf(fakeExtractor(false)))
+
+        val result = useCase("https://www.instagram.com/creators/")
+
+        assertTrue(result is ValidateUrlUseCase.ValidationResult.Invalid)
+        assertEquals(
+            "Instagram profile pages do not contain extractable audio. Please share a specific Reel or video post.",
             (result as ValidateUrlUseCase.ValidationResult.Invalid).reason
         )
     }

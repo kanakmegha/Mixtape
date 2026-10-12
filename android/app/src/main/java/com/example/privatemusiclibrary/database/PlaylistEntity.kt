@@ -9,5 +9,7 @@ data class PlaylistEntity(
     val name: String,
     val description: String?,
     val artworkUri: String?,
-    val createdAt: Long
+    val createdAt: Long,
+    val updatedAt: Long = createdAt,
+    val isDeleted: Boolean = false
 )

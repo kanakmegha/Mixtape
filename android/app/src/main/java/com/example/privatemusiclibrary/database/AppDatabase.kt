@@ -11,9 +11,10 @@ import androidx.room.RoomDatabase
         PlaylistTrackEntity::class,
         PlaybackStateEntity::class,
         ImportJobEntity::class,
-        AppSettingsEntity::class
+        AppSettingsEntity::class,
+        SyncTombstoneEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,4 +25,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun playbackStateDao(): PlaybackStateDao
     abstract fun importJobDao(): ImportJobDao
     abstract fun appSettingsDao(): AppSettingsDao
+    abstract fun syncTombstoneDao(): SyncTombstoneDao
 }

@@ -44,14 +44,55 @@ type TrackSyncPayload struct {
 	Deleted          bool    `json:"deleted"`
 }
 
-type PlaylistSyncPayload struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Deleted bool   `json:"deleted"`
-	Tracks  []PlaylistTrackSyncPayload `json:"tracks"`
+type PlaylistTrackSyncPayload struct {
+	ID        *string `json:"id,omitempty"`
+	TrackKey  string  `json:"track_key"`
+	TrackID   string  `json:"track_id,omitempty"` // For backward compatibility
+	Position  int     `json:"position"`
+	Title     string  `json:"title,omitempty"`
+	Artist    *string `json:"artist,omitempty"`
+	Album     *string `json:"album,omitempty"`
+	Duration  *int    `json:"duration,omitempty"`
+	Deleted   bool    `json:"deleted,omitempty"`
+	UpdatedAt int64   `json:"updated_at,omitempty"`
 }
 
-type PlaylistTrackSyncPayload struct {
-	TrackID  string `json:"track_id"`
-	Position int    `json:"position"`
+func (p *PlaylistTrackSyncPayload) GetLogicalKey() string {
+	if p.TrackKey != "" {
+		return p.TrackKey
+	}
+	return p.TrackID
+}
+
+type PlaylistSyncPayload struct {
+	ID          string                     `json:"id"`
+	Name        string                     `json:"name"`
+	Description *string                    `json:"description,omitempty"`
+	Deleted     bool                       `json:"deleted"`
+	UpdatedAt   int64                      `json:"updated_at"`
+	Tracks      []PlaylistTrackSyncPayload `json:"tracks"`
+}
+
+type FavoriteSyncPayload struct {
+	TrackKey   string  `json:"track_key"`
+	Title      string  `json:"title"`
+	Artist     *string `json:"artist,omitempty"`
+	Album      *string `json:"album,omitempty"`
+	Duration   *int    `json:"duration,omitempty"`
+	Source     *string `json:"source,omitempty"`
+	IsFavorite bool    `json:"is_favorite"`
+	UpdatedAt  int64   `json:"updated_at"`
+	Deleted    bool    `json:"deleted,omitempty"`
+}
+
+type SyncRequest struct {
+	Playlists []PlaylistSyncPayload `json:"playlists"`
+	Favorites []FavoriteSyncPayload `json:"favorites"`
+	Since     int64                 `json:"since"` // Unix milliseconds timestamp (0 for full snapshot)
+}
+
+type SyncResponse struct {
+	Playlists  []PlaylistSyncPayload `json:"playlists"`
+	Favorites  []FavoriteSyncPayload `json:"favorites"`
+	ServerTime int64                 `json:"server_time"` // Unix milliseconds timestamp
 }

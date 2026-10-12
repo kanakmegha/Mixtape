@@ -48,7 +48,7 @@ func setupTestDB(t *testing.T) *pgxpool.Pool {
 	}
 
 	// Clean up for test
-	_, err = pool.Exec(ctx, "TRUNCATE TABLE users, invitations, sessions, playlists, tracks, playlist_tracks CASCADE;")
+	_, err = pool.Exec(ctx, "TRUNCATE TABLE users, invitations, sessions, playlists, tracks, playlist_tracks, favorites CASCADE;")
 	if err != nil {
 		t.Fatalf("Failed to truncate tables: %v", err)
 	}

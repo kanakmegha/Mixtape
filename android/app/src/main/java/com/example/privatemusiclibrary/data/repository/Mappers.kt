@@ -34,7 +34,9 @@ fun TrackEntity.toDomain() = Track(
     isFavorite = isFavorite,
     folderId = folderId,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    trackKey = trackKey,
+    isLocalAvailable = isLocalAvailable
 )
 
 fun Track.toEntity() = TrackEntity(
@@ -57,7 +59,9 @@ fun Track.toEntity() = TrackEntity(
     isFavorite = isFavorite,
     folderId = folderId,
     createdAt = createdAt,
-    updatedAt = updatedAt
+    updatedAt = updatedAt,
+    trackKey = trackKey,
+    isLocalAvailable = isLocalAvailable
 )
 
 fun FolderEntity.toDomain() = Folder(
@@ -77,7 +81,9 @@ fun PlaylistEntity.toDomain() = Playlist(
     name = name,
     description = description,
     artworkUri = artworkUri,
-    createdAt = createdAt
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    isDeleted = isDeleted
 )
 
 fun Playlist.toEntity() = PlaylistEntity(
@@ -85,7 +91,9 @@ fun Playlist.toEntity() = PlaylistEntity(
     name = name,
     description = description,
     artworkUri = artworkUri,
-    createdAt = createdAt
+    createdAt = createdAt,
+    updatedAt = updatedAt,
+    isDeleted = isDeleted
 )
 
 fun ImportJobEntity.toDomain() = ImportJob(
@@ -127,7 +135,8 @@ fun AppSettingsEntity.toDomain() = AppSettings(
     storageUri = storageUri,
     defaultPlaybackSpeed = defaultPlaybackSpeed,
     defaultAudioQuality = defaultAudioQuality,
-    resumePlayback = resumePlayback
+    resumePlayback = resumePlayback,
+    isStorageConfirmed = false
 )
 
 fun AppSettings.toEntity() = AppSettingsEntity(

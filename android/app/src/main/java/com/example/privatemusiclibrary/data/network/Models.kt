@@ -36,16 +36,52 @@ data class TrackSyncPayload(
     @SerializedName("deleted") val deleted: Boolean
 )
 
+data class PlaylistTrackSyncPayload(
+    @SerializedName("id") val id: String? = null,
+    @SerializedName("track_key") val trackKey: String = "",
+    @SerializedName("track_id") val trackId: String = "",
+    @SerializedName("position") val position: Int = 0,
+    @SerializedName("title") val title: String = "",
+    @SerializedName("artist") val artist: String? = null,
+    @SerializedName("album") val album: String? = null,
+    @SerializedName("duration") val duration: Int? = null,
+    @SerializedName("deleted") val deleted: Boolean = false,
+    @SerializedName("updated_at") val updatedAt: Long = 0L
+) {
+    fun getLogicalKey(): String = if (trackKey.isNotBlank()) trackKey else trackId
+}
+
 data class PlaylistSyncPayload(
     @SerializedName("id") val id: String,
     @SerializedName("name") val name: String,
-    @SerializedName("deleted") val deleted: Boolean,
-    @SerializedName("tracks") val tracks: List<PlaylistTrackSyncPayload>
+    @SerializedName("description") val description: String? = null,
+    @SerializedName("deleted") val deleted: Boolean = false,
+    @SerializedName("updated_at") val updatedAt: Long = 0L,
+    @SerializedName("tracks") val tracks: List<PlaylistTrackSyncPayload> = emptyList()
 )
 
-data class PlaylistTrackSyncPayload(
-    @SerializedName("track_id") val trackId: String,
-    @SerializedName("position") val position: Int
+data class FavoriteSyncPayload(
+    @SerializedName("track_key") val trackKey: String,
+    @SerializedName("title") val title: String,
+    @SerializedName("artist") val artist: String? = null,
+    @SerializedName("album") val album: String? = null,
+    @SerializedName("duration") val duration: Int? = null,
+    @SerializedName("source") val source: String? = null,
+    @SerializedName("is_favorite") val isFavorite: Boolean = true,
+    @SerializedName("updated_at") val updatedAt: Long = 0L,
+    @SerializedName("deleted") val deleted: Boolean = false
+)
+
+data class SyncRequest(
+    @SerializedName("playlists") val playlists: List<PlaylistSyncPayload> = emptyList(),
+    @SerializedName("favorites") val favorites: List<FavoriteSyncPayload> = emptyList(),
+    @SerializedName("since") val since: Long = 0L
+)
+
+data class SyncResponse(
+    @SerializedName("playlists") val playlists: List<PlaylistSyncPayload> = emptyList(),
+    @SerializedName("favorites") val favorites: List<FavoriteSyncPayload> = emptyList(),
+    @SerializedName("server_time") val serverTime: Long = 0L
 )
 
 data class CreateInvitationRequest(

@@ -8,6 +8,8 @@ import com.example.privatemusiclibrary.data.network.MixtapeApi
 import com.example.privatemusiclibrary.data.network.PlaylistSyncPayload
 import com.example.privatemusiclibrary.data.network.RefreshRequest
 import com.example.privatemusiclibrary.data.network.RegisterRequest
+import com.example.privatemusiclibrary.data.network.SyncRequest
+import com.example.privatemusiclibrary.data.network.SyncResponse
 import com.example.privatemusiclibrary.data.network.TokenResponse
 import com.example.privatemusiclibrary.data.network.TrackSyncPayload
 import kotlinx.coroutines.Dispatchers
@@ -195,6 +197,14 @@ class FakeMixtapeApi : MixtapeApi {
 
     override suspend fun logout(request: RefreshRequest): Response<Unit> {
         return Response.success(Unit)
+    }
+
+    override suspend fun getSyncState(since: Long?): Response<SyncResponse> {
+        return Response.success(SyncResponse(serverTime = 0L))
+    }
+
+    override suspend fun sync(request: SyncRequest): Response<SyncResponse> {
+        return Response.success(SyncResponse(serverTime = 0L))
     }
 
     override suspend fun syncTracks(tracks: List<TrackSyncPayload>): Response<List<TrackSyncPayload>> {

@@ -43,18 +43,40 @@ type Track struct {
 }
 
 type Playlist struct {
-	ID        uuid.UUID  `json:"id"`
-	UserID    uuid.UUID  `json:"user_id"`
-	Name      string     `json:"name"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
-	DeletedAt *time.Time `json:"deleted_at,omitempty"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	Name        string     `json:"name"`
+	Description *string    `json:"description,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at,omitempty"`
 }
 
 type PlaylistTrack struct {
-	ID         uuid.UUID `json:"id"`
-	PlaylistID uuid.UUID `json:"playlist_id"`
-	TrackID    string    `json:"track_id"`
-	Position   int       `json:"position"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         uuid.UUID  `json:"id"`
+	PlaylistID uuid.UUID  `json:"playlist_id"`
+	TrackID    string     `json:"track_id"`
+	Position   int        `json:"position"`
+	Title      *string    `json:"title,omitempty"`
+	Artist     *string    `json:"artist,omitempty"`
+	Album      *string    `json:"album,omitempty"`
+	Duration   *int       `json:"duration,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
+}
+
+type Favorite struct {
+	ID         uuid.UUID  `json:"id"`
+	UserID     uuid.UUID  `json:"user_id"`
+	TrackKey   string     `json:"track_key"`
+	Title      string     `json:"title"`
+	Artist     *string    `json:"artist,omitempty"`
+	Album      *string    `json:"album,omitempty"`
+	Duration   *int       `json:"duration,omitempty"`
+	Source     *string    `json:"source,omitempty"`
+	IsFavorite bool       `json:"is_favorite"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
 }

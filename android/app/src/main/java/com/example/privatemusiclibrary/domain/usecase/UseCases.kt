@@ -35,23 +35,31 @@ class SearchTracksUseCase @Inject constructor(
 }
 
 class AddFavoriteUseCase @Inject constructor(
-    private val trackRepository: TrackRepository
+    private val trackRepository: TrackRepository,
+    private val syncTombstoneDao: com.example.privatemusiclibrary.database.SyncTombstoneDao? = null
 ) {
     suspend operator fun invoke(trackId: String) {
         val track = trackRepository.getById(trackId)
         if (track != null) {
-            trackRepository.update(track.copy(isFavorite = true, updatedAt = System.currentTimeMillis()))
+            val now = System.currentTimeMillis()
+            val stableKey = track.trackKey.ifBlank { com.example.privatemusiclibrary.domain.identity.TrackIdentityResolver.fallbackLegacyKey(track.id) }
+            syncTombstoneDao?.delete("favorite", stableKey)
+            trackRepository.update(track.copy(isFavorite = true, updatedAt = now))
         }
     }
 }
 
 class RemoveFavoriteUseCase @Inject constructor(
-    private val trackRepository: TrackRepository
+    private val trackRepository: TrackRepository,
+    private val syncTombstoneDao: com.example.privatemusiclibrary.database.SyncTombstoneDao? = null
 ) {
     suspend operator fun invoke(trackId: String) {
         val track = trackRepository.getById(trackId)
         if (track != null) {
-            trackRepository.update(track.copy(isFavorite = false, updatedAt = System.currentTimeMillis()))
+            val now = System.currentTimeMillis()
+            val stableKey = track.trackKey.ifBlank { com.example.privatemusiclibrary.domain.identity.TrackIdentityResolver.fallbackLegacyKey(track.id) }
+            syncTombstoneDao?.insert(com.example.privatemusiclibrary.database.SyncTombstoneEntity("favorite", stableKey, now))
+            trackRepository.update(track.copy(isFavorite = false, updatedAt = now))
         }
     }
 }
@@ -119,9 +127,27 @@ class MoveTrackToFolderUseCase @Inject constructor(
 class SetStorageLocationUseCase @Inject constructor(
     private val settingsRepository: SettingsRepository
 ) {
-    suspend operator fun invoke(uri: String) {
+    suspend operator fun invoke(uri: String?) {
         val settings = settingsRepository.getSettings()
-        settingsRepository.updateSettings(settings.copy(storageUri = uri))
+        settingsRepository.updateSettings(settings.copy(storageUri = uri, isStorageConfirmed = true))
+    }
+}
+
+class ConfirmStorageLocationUseCase @Inject constructor(
+    private val settingsRepository: SettingsRepository
+) {
+    suspend operator fun invoke() {
+        val settings = settingsRepository.getSettings()
+        settingsRepository.updateSettings(settings.copy(isStorageConfirmed = true))
+    }
+}
+
+class ResetStorageLocationUseCase @Inject constructor(
+    private val settingsRepository: SettingsRepository
+) {
+    suspend operator fun invoke() {
+        val settings = settingsRepository.getSettings()
+        settingsRepository.updateSettings(settings.copy(storageUri = null, isStorageConfirmed = true))
     }
 }
 
