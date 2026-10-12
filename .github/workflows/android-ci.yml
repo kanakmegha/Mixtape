@@ -44,12 +44,12 @@ jobs:
 
       - name: Run unit tests and build debug APK
         working-directory: android
-        run: ./gradlew --no-daemon testDebugUnitTest assembleDebug
+        run: ./gradlew --no-daemon testDebugUnitTest assembleProductionDebug
 
       - name: Upload debug APK for optional testing
         uses: actions/upload-artifact@v4
         with:
           name: mixtape-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: android/app/build/outputs/apk/production/debug/app-production-debug.apk
           if-no-files-found: error
           retention-days: 7
