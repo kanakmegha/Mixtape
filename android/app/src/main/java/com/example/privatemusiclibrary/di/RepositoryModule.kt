@@ -63,7 +63,7 @@ abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindLocalAudioStorage(
-        impl: SafLocalAudioStorage
+        impl: com.example.privatemusiclibrary.data.storage.DefaultLocalAudioStorage
     ): LocalAudioStorage
     
     @Binds
@@ -83,4 +83,10 @@ abstract class RepositoryModule {
     abstract fun bindYtDlpAudioExtractor(
         impl: com.example.privatemusiclibrary.data.extraction.YtDlpAudioExtractor
     ): com.example.privatemusiclibrary.domain.extraction.AudioExtractor
+
+    @Binds
+    @Singleton
+    abstract fun bindSyncRepository(
+        impl: com.example.privatemusiclibrary.data.repository.DefaultSyncRepository
+    ): com.example.privatemusiclibrary.domain.repository.SyncRepository
 }

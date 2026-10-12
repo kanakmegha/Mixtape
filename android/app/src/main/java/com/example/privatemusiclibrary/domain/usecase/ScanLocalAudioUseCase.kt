@@ -37,6 +37,17 @@ class ScanLocalAudioUseCase @Inject constructor(
         for (uriStr in newUris) {
             val metadata = metadataExtractor.extractMetadata(uriStr) ?: continue
             
+            // Check if track is already in library (matching URI or matching title/artist/duration)
+            val isDuplicate = existingTracks.any { existing ->
+                existing.localUri == uriStr || (
+                    existing.title.equals(metadata.title, ignoreCase = true) &&
+                    (existing.artist ?: "") == (metadata.artist ?: "") &&
+                    existing.durationMs != null && metadata.durationMs != null &&
+                    kotlin.math.abs(existing.durationMs - metadata.durationMs) < 2000L
+                )
+            }
+            if (isDuplicate) continue
+
             val track = Track(
                 id = UUID.randomUUID().toString(),
                 title = metadata.title,

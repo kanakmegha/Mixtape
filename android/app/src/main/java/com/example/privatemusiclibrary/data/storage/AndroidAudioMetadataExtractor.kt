@@ -37,16 +37,45 @@ class AndroidAudioMetadataExtractor @Inject constructor(
             } catch (e: Exception) {}
         }
         
+        var displayName: String? = null
+        var querySizeBytes: Long? = null
+        var queryMimeType: String? = null
+
+        try {
+            context.contentResolver.query(
+                parsedUri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val nameIdx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx != -1 && !cursor.isNull(nameIdx)) {
+                        displayName = cursor.getString(nameIdx)
+                    }
+                    val sizeIdx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                    if (sizeIdx != -1 && !cursor.isNull(sizeIdx)) {
+                        querySizeBytes = cursor.getLong(sizeIdx)
+                    }
+                }
+            }
+            queryMimeType = context.contentResolver.getType(parsedUri)
+        } catch (_: Exception) {}
+
         val document = try {
             DocumentFile.fromSingleUri(context, parsedUri)
         } catch (e: Exception) { null }
         
-        if (title == "Unknown Title") {
-            title = document?.name?.substringBeforeLast(".") ?: "Unknown Title"
+        if (title == "Unknown Title" || title.isBlank()) {
+            val fallbackName = displayName ?: document?.name
+            if (!fallbackName.isNullOrBlank()) {
+                title = fallbackName.substringBeforeLast(".")
+            }
         }
         
-        val sizeBytes = document?.length()
-        val mimeType = document?.type ?: "audio/mpeg"
+        val sizeBytes = querySizeBytes ?: document?.length()
+        val mimeType = queryMimeType ?: document?.type ?: "audio/mpeg"
         
         AudioMetadata(
             title = title,

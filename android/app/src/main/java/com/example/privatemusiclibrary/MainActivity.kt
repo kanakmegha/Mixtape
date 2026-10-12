@@ -44,9 +44,14 @@ class MainActivity : ComponentActivity() {
     private val _updatePromptError =
         kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
 
+    private var lastHandledIntentFingerprint: String? = null
+    private var lastHandledIntentTime: Long = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        handleIntent(intent)
+        if (savedInstanceState == null) {
+            handleIntent(intent)
+        }
 
         // Check for a newer published release in the background. Prompt once per
         // available version; users can always check manually in Settings.
@@ -71,6 +76,11 @@ class MainActivity : ComponentActivity() {
                         scanLocalAudioUseCase()
                     } catch (e: Exception) {
                         // Ignore background scan errors
+                    }
+                    try {
+                        com.example.privatemusiclibrary.data.worker.SyncWorker.enqueueOneTime(this@MainActivity)
+                    } catch (e: Exception) {
+                        // Ignore background sync enqueue errors
                     }
                 }
             }
@@ -165,6 +175,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleIntent(intent)
     }
 
@@ -194,18 +205,49 @@ class MainActivity : ComponentActivity() {
             }
 
             android.content.Intent.ACTION_SEND -> {
-                if (intent.type?.startsWith("text/") == true || intent.type == "text/plain") {
-                    val text = intent.getStringExtra(android.content.Intent.EXTRA_TEXT)
-                        ?: intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString()
-                        ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+                val extractedText = extractSharedText(intent)
+                val extractedUrl = com.example.privatemusiclibrary.util.SharedUrlExtractor.extractUrl(extractedText)
 
-                    val extractedUrl = com.example.privatemusiclibrary.util.SharedUrlExtractor.extractUrl(text)
-                    if (extractedUrl != null) {
-                        pendingImportManager.setPendingUrl(extractedUrl)
+                if (extractedUrl != null) {
+                    val currentTime = System.currentTimeMillis()
+                    val fingerprint = "${intent.action}_$extractedUrl"
+                    if (fingerprint == lastHandledIntentFingerprint && (currentTime - lastHandledIntentTime) < 1500L) {
+                        return // Avoid rapid duplicate processing from bouncing lifecycle callbacks
                     }
+                    lastHandledIntentFingerprint = fingerprint
+                    lastHandledIntentTime = currentTime
+                    pendingImportManager.setPendingUrl(extractedUrl)
                 }
             }
         }
+    }
+
+    private fun extractSharedText(intent: android.content.Intent): String? {
+        val candidates = mutableListOf<String>()
+
+        intent.getStringExtra(android.content.Intent.EXTRA_TEXT)?.let { candidates.add(it) }
+        intent.getCharSequenceExtra(android.content.Intent.EXTRA_TEXT)?.toString()?.let { candidates.add(it) }
+        intent.getStringExtra(android.content.Intent.EXTRA_HTML_TEXT)?.let { candidates.add(it) }
+
+        val clipData = intent.clipData
+        if (clipData != null) {
+            for (i in 0 until clipData.itemCount) {
+                val item = clipData.getItemAt(i)
+                item.text?.toString()?.let { candidates.add(it) }
+                item.htmlText?.let { candidates.add(it) }
+                item.uri?.toString()?.let { candidates.add(it) }
+            }
+        }
+
+        intent.data?.toString()?.let { candidates.add(it) }
+
+        // Find candidate that contains a recognized or valid URL
+        for (candidate in candidates) {
+            val url = com.example.privatemusiclibrary.util.SharedUrlExtractor.extractUrl(candidate)
+            if (url != null) return candidate
+        }
+
+        return candidates.firstOrNull { it.isNotBlank() }
     }
 
     private companion object {

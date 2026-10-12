@@ -61,46 +61,45 @@ class ImportViewModelTest {
     }
 
     @Test
-    fun unconfiguredStorage_retainsPendingUrl_showsNotice_doesNotDiscard() = runTest {
-        // Storage is unconfigured (storageUri = null)
-        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null)
+    fun firstUse_unconfirmedStorage_retainsPendingUrl_showsConfirmationDialog() = runTest {
+        // Brand-new user: storage is default automatic, but unconfirmed first-use
+        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null, isStorageConfirmed = false)
 
         val viewModel = createViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertFalse(viewModel.uiState.value.isStorageConfigured)
+        assertTrue(viewModel.uiState.value.isStorageConfigured)
+        assertFalse(viewModel.uiState.value.isStorageConfirmed)
         assertFalse(viewModel.uiState.value.isStorageLoading)
 
         // Incoming shared URL received
         viewModel.onSharedUrlReceived("https://youtu.be/test12345")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // Verify URL is retained and not discarded
+        // Verify URL is retained, not discarded, and confirmation dialog is shown
         assertEquals("https://youtu.be/test12345", viewModel.uiState.value.urlInput)
         assertEquals("https://youtu.be/test12345", viewModel.uiState.value.pendingSharedUrl)
         assertEquals("https://youtu.be/test12345", pendingImportManager.pendingUrl.value)
-        assertNotNull(viewModel.uiState.value.error)
-        assertTrue(viewModel.uiState.value.error!!.contains("Storage directory is not configured"))
+        assertTrue(viewModel.uiState.value.showStorageConfirmationDialog)
 
         // Verify import was NOT started prematurely
         assertEquals(0, fakeImportUseCase.invocations.size)
     }
 
     @Test
-    fun storageConfiguredLater_resumesPendingImportAutomatically() = runTest {
-        // Storage initially unconfigured
-        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null)
+    fun firstUse_confirmStorage_resumesPendingImportAutomatically() = runTest {
+        // Initially unconfirmed
+        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null, isStorageConfirmed = false)
 
         val viewModel = createViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // Shared URL received while storage is unconfigured
         viewModel.onSharedUrlReceived("https://youtu.be/test12345")
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(0, fakeImportUseCase.invocations.size)
 
-        // User configures storage in Settings
-        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = "content://com.android.externalstorage.documents/tree/music")
+        // User confirms default storage destination (Music/Mixtape/)
+        viewModel.confirmStorageAndStartImport()
         testDispatcher.scheduler.advanceUntilIdle()
 
         // Verify import automatically started
@@ -110,21 +109,24 @@ class ImportViewModelTest {
         // Verify pending URL was consumed atomically
         assertNull(pendingImportManager.pendingUrl.value)
         assertNull(viewModel.uiState.value.pendingSharedUrl)
+        assertFalse(viewModel.uiState.value.showStorageConfirmationDialog)
+        assertTrue(viewModel.uiState.value.isStorageConfirmed)
     }
 
     @Test
-    fun configuredStorage_startsImportImmediately_andConsumesPendingUrl() = runTest {
-        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = "content://music")
+    fun confirmedStorage_startsImportImmediately_andConsumesPendingUrl() = runTest {
+        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null, isStorageConfirmed = true)
 
         val viewModel = createViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.isStorageConfigured)
+        assertTrue(viewModel.uiState.value.isStorageConfirmed)
 
         viewModel.onSharedUrlReceived("https://youtu.be/test12345")
         testDispatcher.scheduler.advanceUntilIdle()
 
-        // Verify exactly one invocation
+        // Verify exactly one invocation immediately
         assertEquals(1, fakeImportUseCase.invocations.size)
         assertEquals("https://youtu.be/test12345", fakeImportUseCase.invocations[0])
         assertNull(pendingImportManager.pendingUrl.value)
@@ -132,8 +134,30 @@ class ImportViewModelTest {
     }
 
     @Test
+    fun customFolderSelected_confirmsStorageAndResumesPendingImport() = runTest {
+        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null, isStorageConfirmed = false)
+
+        val viewModel = createViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onSharedUrlReceived("https://youtu.be/test12345")
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(0, fakeImportUseCase.invocations.size)
+
+        // User chooses custom folder via SAF picker
+        viewModel.onStorageLocationSelected("content://com.android.externalstorage.documents/tree/custom")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, fakeImportUseCase.invocations.size)
+        assertEquals("https://youtu.be/test12345", fakeImportUseCase.invocations[0])
+        assertNull(pendingImportManager.pendingUrl.value)
+        assertNull(viewModel.uiState.value.pendingSharedUrl)
+        assertTrue(viewModel.uiState.value.isStorageConfirmed)
+    }
+
+    @Test
     fun duplicateRecomposition_doesNotTriggerDuplicateImports() = runTest {
-        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = "content://music")
+        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null, isStorageConfirmed = true)
 
         val viewModel = createViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -153,8 +177,8 @@ class ImportViewModelTest {
     }
 
     @Test
-    fun manualUrlEntry_worksNormallyWhenStorageConfigured() = runTest {
-        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = "content://music")
+    fun manualUrlEntry_worksNormallyWhenConfirmed() = runTest {
+        fakeSettingsRepo.settingsFlow.value = AppSettings(storageUri = null, isStorageConfirmed = true)
 
         val viewModel = createViewModel()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -169,13 +193,90 @@ class ImportViewModelTest {
         assertEquals("https://example.com/direct.mp3", fakeImportUseCase.invocations[0])
         assertEquals("", viewModel.uiState.value.urlInput)
     }
+
+    @Test
+    fun instagramShare_confirmedStorage_startsImportImmediately() = runTest {
+        fakeSettingsRepo.settingsFlow.value = AppSettings(isStorageConfirmed = true)
+
+        val viewModel = createViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onSharedUrlReceived("https://www.instagram.com/reel/DCqQkQ3I123/?igsh=abc")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, fakeImportUseCase.invocations.size)
+        assertEquals("https://www.instagram.com/reel/DCqQkQ3I123/?igsh=abc", fakeImportUseCase.invocations[0])
+        assertNull(pendingImportManager.pendingUrl.value)
+    }
+
+    @Test
+    fun incomingUrl_arrivesWhileStorageIsLoading_startsImportOnceStorageSettingsLoaded() = runTest {
+        // Shared URL set into pending import manager before ViewModel connects
+        pendingImportManager.setPendingUrl("https://www.instagram.com/reel/DCqQkQ3I123/")
+
+        val viewModel = createViewModel()
+        // Simulate storage settings completing after pending URL
+        fakeSettingsRepo.settingsFlow.value = AppSettings(isStorageConfirmed = true)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(1, fakeImportUseCase.invocations.size)
+        assertEquals("https://www.instagram.com/reel/DCqQkQ3I123/", fakeImportUseCase.invocations[0])
+        assertNull(pendingImportManager.pendingUrl.value)
+    }
+
+    @Test
+    fun recreatedViewModel_tracksExistingActiveJob_displaysProgress() = runTest {
+        fakeSettingsRepo.settingsFlow.value = AppSettings(isStorageConfirmed = true)
+        val activeJob = ImportJob(
+            id = "active-job-123",
+            sourceUrl = "https://www.instagram.com/reel/DCqQkQ3I123/",
+            title = "Instagram Reel",
+            status = ImportJobStatus.DOWNLOADING,
+            progress = 45,
+            errorMessage = null,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        fakeJobRepo.insert(activeJob)
+
+        val viewModel = createViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertNotNull(viewModel.uiState.value.currentJob)
+        assertEquals("active-job-123", viewModel.uiState.value.currentJob?.id)
+        assertEquals(ImportJobStatus.DOWNLOADING, viewModel.uiState.value.currentJob?.status)
+        assertEquals(45, viewModel.uiState.value.currentJob?.progress)
+    }
+
+    @Test
+    fun importValidationFailure_displaysSpecificErrorMessage() = runTest {
+        fakeSettingsRepo.settingsFlow.value = AppSettings(isStorageConfirmed = true)
+        fakeImportUseCase.failureMessage = "Instagram profile pages do not contain extractable audio. Please share a specific Reel or video post."
+
+        val viewModel = createViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onSharedUrlReceived("https://www.instagram.com/creators/")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.isImporting)
+        assertEquals(
+            "Instagram profile pages do not contain extractable audio. Please share a specific Reel or video post.",
+            viewModel.uiState.value.error
+        )
+    }
 }
 
 class FakeImportUrlUseCase : ImportUrlUseCase() {
     val invocations = mutableListOf<String>()
+    var failureMessage: String? = null
 
     override suspend fun invoke(url: String): Result<String> {
         invocations.add(url)
+        val failure = failureMessage
+        if (failure != null) {
+            return Result.failure(Exception(failure))
+        }
         return Result.success("job-" + invocations.size)
     }
 }

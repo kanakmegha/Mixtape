@@ -124,4 +124,28 @@ class YtDlpErrorClassifierTest {
         assertTrue(sanitized.contains("REDACTED"))
         assertTrue(sanitized.contains("[URL]"))
     }
+
+    @Test
+    fun classifyError_instagramPrivateAccount_reportsPrivateActionableMessage() {
+        val exception = Exception("ERROR: [Instagram] DCqQkQ3I123: This account is private. Login required.")
+        val result = YtDlpErrorClassifier.classifyError(exception)
+
+        assertTrue(result.contains("private and cannot be accessed without login"))
+    }
+
+    @Test
+    fun classifyError_instagramPhotoOnlyPost_reportsPhotoOnlyMessage() {
+        val exception = Exception("ERROR: [Instagram] DCqQkQ3I123: Post does not contain a video")
+        val result = YtDlpErrorClassifier.classifyError(exception)
+
+        assertTrue(result.contains("contains only photos or images without an extractable audio stream"))
+    }
+
+    @Test
+    fun classifyError_instagramDeletedPost_reportsUnavailableMessage() {
+        val exception = Exception("ERROR: [Instagram] DCqQkQ3I123: This post may have been deleted")
+        val result = YtDlpErrorClassifier.classifyError(exception)
+
+        assertTrue(result.contains("unavailable, removed, or geo-restricted"))
+    }
 }

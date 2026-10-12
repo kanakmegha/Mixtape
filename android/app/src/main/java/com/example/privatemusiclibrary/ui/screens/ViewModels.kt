@@ -131,7 +131,10 @@ data class SettingsUiState(
     val trackCount: Int = 0,
     val isCreatingInvitation: Boolean = false,
     val invitationToken: String? = null,
-    val invitationError: String? = null
+    val invitationError: String? = null,
+    val syncStatus: com.example.privatemusiclibrary.domain.model.SyncStatus = com.example.privatemusiclibrary.domain.model.SyncStatus.Idle,
+    val lastSyncTime: Long = 0L,
+    val syncErrorMessage: String? = null
 )
 
 @HiltViewModel
@@ -139,7 +142,9 @@ class SettingsViewModel @Inject constructor(
     private val setStorageLocationUseCase: SetStorageLocationUseCase,
     private val getStorageInfoUseCase: GetStorageInfoUseCase,
     private val getLibraryTracksUseCase: GetLibraryTracksUseCase,
-    private val mixtapeApi: MixtapeApi
+    private val scanLocalAudioUseCase: com.example.privatemusiclibrary.domain.usecase.ScanLocalAudioUseCase,
+    private val mixtapeApi: MixtapeApi,
+    private val syncRepository: com.example.privatemusiclibrary.domain.repository.SyncRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -147,6 +152,27 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
+        viewModelScope.launch {
+            syncRepository.syncStatus.collect { status ->
+                _uiState.update {
+                    it.copy(
+                        syncStatus = status,
+                        syncErrorMessage = if (status is com.example.privatemusiclibrary.domain.model.SyncStatus.Error) status.message else null
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
+            syncRepository.lastSyncTime.collect { time ->
+                _uiState.update { it.copy(lastSyncTime = time) }
+            }
+        }
+    }
+
+    fun syncNow() {
+        viewModelScope.launch {
+            syncRepository.sync()
+        }
     }
 
     private fun loadSettings() {
@@ -165,12 +191,33 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun onStorageLocationSelected(uri: Uri) {
+    fun onStorageLocationSelected(uri: Uri?) {
+        if (uri == null) return
+        onStorageLocationSelected(uri.toString())
+    }
+
+    fun onStorageLocationSelected(uriString: String) {
         viewModelScope.launch {
-            setStorageLocationUseCase(uri.toString())
-            _uiState.update { it.copy(storageUri = uri.toString()) }
+            setStorageLocationUseCase(uriString)
+            _uiState.update { it.copy(storageUri = uriString) }
         }
     }
+
+    fun resetStorageToDefault() {
+        viewModelScope.launch {
+            setStorageLocationUseCase(null)
+            _uiState.update { it.copy(storageUri = null) }
+        }
+    }
+
+    fun scanStorage() {
+        viewModelScope.launch {
+            try {
+                scanLocalAudioUseCase()
+            } catch (_: Exception) {}
+        }
+    }
+
     fun createInvitation() {
         if (_uiState.value.isCreatingInvitation) return
 
@@ -229,12 +276,14 @@ class SettingsViewModel @Inject constructor(
 
 data class ImportUiState(
     val storageUri: String? = null,
-    val isStorageConfigured: Boolean = false,
+    val isStorageConfigured: Boolean = true,
+    val isStorageConfirmed: Boolean = false,
     val isStorageLoading: Boolean = true,
     val urlInput: String = "",
     val pendingSharedUrl: String? = null,
     val isImporting: Boolean = false,
     val error: String? = null,
+    val showStorageConfirmationDialog: Boolean = false,
     val currentJob: com.example.privatemusiclibrary.domain.model.ImportJob? = null
 )
 
@@ -257,19 +306,18 @@ class ImportViewModel @Inject constructor(
         // Continuously observe storage settings
         viewModelScope.launch {
             settingsRepository.observeSettings().collect { settings ->
-                val configured = !settings.storageUri.isNullOrBlank()
+                val confirmed = settings.isStorageConfirmed || !settings.storageUri.isNullOrBlank()
                 _uiState.update {
                     it.copy(
                         storageUri = settings.storageUri,
-                        isStorageConfigured = configured,
+                        isStorageConfigured = true,
+                        isStorageConfirmed = confirmed,
                         isStorageLoading = false
                     )
                 }
 
-                // If storage was just configured and we have a waiting pending URL, start import
-                if (configured) {
-                    checkAndStartPendingImport()
-                }
+                // Check and trigger pending import once storage status is loaded
+                checkAndStartPendingImport()
             }
         }
 
@@ -291,7 +339,14 @@ class ImportViewModel @Inject constructor(
         // Observe import jobs
         viewModelScope.launch {
             importJobRepository.observeAll().collect { jobs ->
-                val job = jobs.find { it.id == currentJobId }
+                val job = if (currentJobId != null) {
+                    jobs.find { it.id == currentJobId }
+                } else {
+                    jobs.filter { !it.status.isTerminal() }.maxByOrNull { it.createdAt }?.also {
+                        currentJobId = it.id
+                    }
+                }
+
                 if (job != null) {
                     _uiState.update { it.copy(currentJob = job, isImporting = false) }
 
@@ -316,7 +371,14 @@ class ImportViewModel @Inject constructor(
 
     fun onSharedUrlReceived(url: String?) {
         if (!url.isNullOrBlank()) {
+            _uiState.update {
+                it.copy(
+                    urlInput = url,
+                    pendingSharedUrl = url
+                )
+            }
             pendingImportManager.setPendingUrl(url)
+            checkAndStartPendingImport()
         }
     }
 
@@ -328,13 +390,13 @@ class ImportViewModel @Inject constructor(
         // 1. Wait for storage settings to finish loading before deciding
         if (state.isStorageLoading) return
 
-        // 2. If storage is not configured, retain URL and inform user without discarding
-        if (!state.isStorageConfigured) {
+        // 2. First-use: If storage destination is not yet confirmed by user, prompt confirmation
+        if (!state.isStorageConfirmed) {
             _uiState.update {
                 it.copy(
                     urlInput = pending,
                     pendingSharedUrl = pending,
-                    error = "Storage directory is not configured. Please select a folder in Settings."
+                    showStorageConfirmationDialog = true
                 )
             }
             return
@@ -348,17 +410,74 @@ class ImportViewModel @Inject constructor(
         // 4. Consume URL and start import
         isImportStarting = true
         pendingImportManager.consumePendingUrl()
-        _uiState.update { it.copy(pendingSharedUrl = null) }
+        _uiState.update { it.copy(pendingSharedUrl = null, showStorageConfirmationDialog = false) }
 
         startImportInternal(pending)
+    }
+
+    fun confirmStorage() {
+        viewModelScope.launch {
+            val settings = settingsRepository.getSettings()
+            settingsRepository.updateSettings(settings.copy(isStorageConfirmed = true))
+            _uiState.update { it.copy(isStorageConfirmed = true, showStorageConfirmationDialog = false) }
+        }
+    }
+
+    fun confirmStorageAndStartImport() {
+        viewModelScope.launch {
+            val settings = settingsRepository.getSettings()
+            settingsRepository.updateSettings(settings.copy(isStorageConfirmed = true))
+            _uiState.update { it.copy(isStorageConfirmed = true, showStorageConfirmationDialog = false) }
+            val url = _uiState.value.urlInput.trim()
+            val targetUrl = if (url.isNotBlank()) url else _uiState.value.pendingSharedUrl.orEmpty()
+            if (targetUrl.isNotBlank()) {
+                if (_uiState.value.pendingSharedUrl == targetUrl) {
+                    pendingImportManager.consumePendingUrl()
+                    _uiState.update { it.copy(pendingSharedUrl = null) }
+                }
+                startImportInternal(targetUrl)
+            }
+        }
+    }
+
+    fun dismissStorageConfirmationDialog() {
+        _uiState.update { it.copy(showStorageConfirmationDialog = false) }
+    }
+
+    fun onStorageLocationSelected(uri: Uri?) {
+        if (uri == null) return
+        onStorageLocationSelected(uri.toString())
+    }
+
+    fun onStorageLocationSelected(uriString: String) {
+        viewModelScope.launch {
+            val settings = settingsRepository.getSettings()
+            settingsRepository.updateSettings(settings.copy(storageUri = uriString, isStorageConfirmed = true))
+            _uiState.update {
+                it.copy(
+                    storageUri = uriString,
+                    isStorageConfirmed = true,
+                    showStorageConfirmationDialog = false
+                )
+            }
+            val url = _uiState.value.urlInput.trim()
+            val targetUrl = if (url.isNotBlank()) url else _uiState.value.pendingSharedUrl.orEmpty()
+            if (targetUrl.isNotBlank()) {
+                if (_uiState.value.pendingSharedUrl == targetUrl) {
+                    pendingImportManager.consumePendingUrl()
+                    _uiState.update { it.copy(pendingSharedUrl = null) }
+                }
+                startImportInternal(targetUrl)
+            }
+        }
     }
 
     fun startImport() {
         val url = _uiState.value.urlInput.trim()
         if (url.isBlank()) return
 
-        if (!_uiState.value.isStorageConfigured) {
-            _uiState.update { it.copy(error = "Storage directory is not configured. Please select a folder in Settings.") }
+        if (!_uiState.value.isStorageConfirmed) {
+            _uiState.update { it.copy(showStorageConfirmationDialog = true) }
             return
         }
 

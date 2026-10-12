@@ -79,6 +79,8 @@ func main() {
 
 			r.Post("/invitations", adminHandler.CreateInvitation)
 
+			r.Get("/sync", syncHandler.GetSyncState)
+			r.Post("/sync", syncHandler.Sync)
 			r.Post("/sync/tracks", syncHandler.SyncTracks)
 			r.Post("/sync/playlists", syncHandler.SyncPlaylists)
 		})

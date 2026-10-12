@@ -299,6 +299,8 @@ fun PlaylistDetailScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
+                val playableTracks = uiState.tracks.filter { it.isLocalAvailable }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -307,11 +309,12 @@ fun PlaylistDetailScreen(
                 ) {
                     Button(
                         onClick = {
-                            if (uiState.tracks.isNotEmpty()) {
-                                playerViewModel.playQueue(uiState.tracks, 0)
+                            if (playableTracks.isNotEmpty()) {
+                                playerViewModel.playQueue(playableTracks, 0)
                                 onNavigateToPlayer()
                             }
                         },
+                        enabled = playableTracks.isNotEmpty(),
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
@@ -325,12 +328,13 @@ fun PlaylistDetailScreen(
                     }
                     Button(
                         onClick = {
-                            if (uiState.tracks.isNotEmpty()) {
-                                playerViewModel.playQueue(uiState.tracks, 0)
+                            if (playableTracks.isNotEmpty()) {
+                                playerViewModel.playQueue(playableTracks, 0)
                                 playerViewModel.setShuffleModeEnabled(true)
                                 onNavigateToPlayer()
                             }
                         },
+                        enabled = playableTracks.isNotEmpty(),
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
@@ -359,8 +363,11 @@ fun PlaylistDetailScreen(
                             TrackRow(
                                 track = track,
                                 onClick = {
-                                    playerViewModel.playQueue(uiState.tracks, index)
-                                    onNavigateToPlayer()
+                                    if (track.isLocalAvailable) {
+                                        val playIndex = playableTracks.indexOf(track).coerceAtLeast(0)
+                                        playerViewModel.playQueue(playableTracks, playIndex)
+                                        onNavigateToPlayer()
+                                    }
                                 },
                                 onRemove = { viewModel.removeTrack(track.id) },
                                 onMoveUp = if (index > 0) {
@@ -388,6 +395,7 @@ fun TrackRow(
 ) {
     Surface(
         onClick = onClick,
+        enabled = track.isLocalAvailable,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Dimens.spacingLg, vertical = 2.dp),
@@ -405,15 +413,25 @@ fun TrackRow(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (track.isLocalAvailable) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
                 Text(
                     text = track.artist ?: "Unknown Artist",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (track.isLocalAvailable) 1f else 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (!track.isLocalAvailable) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Unavailable on this device",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
             var showMenu by remember { mutableStateOf(false) }
             Box {

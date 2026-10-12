@@ -6,11 +6,13 @@ import com.example.privatemusiclibrary.domain.extraction.ExtractedMedia
 import com.example.privatemusiclibrary.domain.model.ImportJobStatus
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
+import com.example.privatemusiclibrary.domain.extraction.MediaPlatform
+import com.example.privatemusiclibrary.domain.extraction.SourceResolutionResult
+import com.example.privatemusiclibrary.domain.extraction.SupportedSourceResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.net.URL
 import java.util.UUID
 import javax.inject.Inject
 
@@ -20,16 +22,14 @@ class YtDlpAudioExtractor @Inject constructor(
 ) : AudioExtractor {
 
     override fun supports(url: String): Boolean {
-        val host = try {
-            URL(url).host.lowercase()
-        } catch (_: Exception) {
-            return false
+        return when (val res = SupportedSourceResolver.resolve(url)) {
+            is SourceResolutionResult.Supported -> {
+                res.platform == MediaPlatform.YOUTUBE ||
+                res.platform == MediaPlatform.INSTAGRAM ||
+                res.platform == MediaPlatform.SOUNDCLOUD
+            }
+            is SourceResolutionResult.Unsupported -> false
         }
-        
-        return host.contains("youtube.com") || 
-               host.contains("youtu.be") || 
-               host.contains("soundcloud.com") ||
-               host.contains("instagram.com")
     }
 
     private fun ensureInitialized() {
@@ -61,36 +61,41 @@ class YtDlpAudioExtractor @Inject constructor(
     ): ExtractedMedia = withContext(Dispatchers.IO) {
         ensureInitialized()
 
-        val isYouTube = url.contains("youtube.com") || url.contains("youtu.be")
+        val resolved = SupportedSourceResolver.resolve(url)
+        val canonicalUrl = if (resolved is SourceResolutionResult.Supported) resolved.canonicalUrl else url.trim()
+
+        val isYouTube = (resolved as? SourceResolutionResult.Supported)?.platform == MediaPlatform.YOUTUBE ||
+                canonicalUrl.contains("youtube.com") || canonicalUrl.contains("youtu.be")
         updateManager.ensureReadyForExtraction(isYouTube = isYouTube)
 
         progressCallback(ImportJobStatus.VALIDATING, 0)
-
-        var normalizedUrl = url.trim()
-        if (normalizedUrl.contains("youtube.com/watch") || normalizedUrl.contains("youtu.be/")) {
-            normalizedUrl = normalizedUrl.substringBefore("&list=").substringBefore("?list=")
-        }
 
         // 1. Fetch metadata (RESOLVING stage)
         progressCallback(ImportJobStatus.RESOLVING, 0)
 
         var metadataTitle = "Unknown Title"
         var metadataArtist: String? = null
-        var metadataSourceId: String? = null
+        var metadataSourceId: String? = (resolved as? SourceResolutionResult.Supported)?.mediaId
         var metadataArtworkUrl: String? = null
-        val metadataPlatform = when {
-            normalizedUrl.contains("instagram.com") -> "Instagram"
-            normalizedUrl.contains("youtube.com") || normalizedUrl.contains("youtu.be") -> "YouTube"
-            normalizedUrl.contains("soundcloud.com") -> "SoundCloud"
-            else -> "Web"
+        val metadataPlatform = if (resolved is SourceResolutionResult.Supported) {
+            resolved.platformDisplayName
+        } else {
+            when {
+                canonicalUrl.contains("instagram.com") -> "Instagram"
+                canonicalUrl.contains("youtube.com") || canonicalUrl.contains("youtu.be") -> "YouTube"
+                canonicalUrl.contains("soundcloud.com") -> "SoundCloud"
+                else -> "Web"
+            }
         }
 
         try {
-            val info = YoutubeDL.getInstance().getInfo(normalizedUrl)
+            val info = YoutubeDL.getInstance().getInfo(canonicalUrl)
             if (info != null) {
                 metadataTitle = info.title ?: "Unknown Title"
                 metadataArtist = info.uploader
-                metadataSourceId = info.id
+                if (!info.id.isNullOrBlank()) {
+                    metadataSourceId = info.id
+                }
                 metadataArtworkUrl = info.thumbnail
             }
         } catch (e: Exception) {
@@ -98,7 +103,7 @@ class YtDlpAudioExtractor @Inject constructor(
             android.util.Log.w("YtDlpAudioExtractor", "Metadata lookup failed: $sanitized", e)
 
             val raw = (e.message.orEmpty() + " " + (e.cause?.message.orEmpty())).lowercase()
-            // If the failure indicates unreachability or definite unavailability, fail early
+            // If the failure indicates unreachability, private content, or definite unavailability, fail early
             if (raw.contains("errno 7") || raw.contains("no address associated") ||
                 raw.contains("unable to resolve host") || raw.contains("network is unreachable") ||
                 raw.contains("connection refused")
@@ -108,8 +113,14 @@ class YtDlpAudioExtractor @Inject constructor(
             if (YtDlpErrorClassifier.isTrulyPrivateOrLoginRequired(raw)) {
                 throw IllegalStateException(YtDlpErrorClassifier.classifyError(e), e)
             }
+            if (raw.contains("does not contain a video") || raw.contains("no video formats found") ||
+                raw.contains("there is no video in this post")
+            ) {
+                throw IllegalStateException(YtDlpErrorClassifier.classifyError(e), e)
+            }
             if (raw.contains("video unavailable") || raw.contains("this video has been removed") ||
-                raw.contains("does not exist") || raw.contains("not found")
+                raw.contains("does not exist") || raw.contains("not found") ||
+                raw.contains("this post may have been deleted")
             ) {
                 throw IllegalStateException(YtDlpErrorClassifier.classifyError(e), e)
             }
@@ -121,19 +132,25 @@ class YtDlpAudioExtractor @Inject constructor(
         if (metadataTitle.startsWith("https://") || metadataTitle.startsWith("http://") ||
             metadataTitle.isBlank() || metadataTitle == "Unknown Title"
         ) {
-            metadataTitle = if (metadataPlatform == "Instagram") "Instagram Reel" else "Imported Audio"
+            metadataTitle = when (metadataPlatform) {
+                "Instagram" -> {
+                    if (!metadataSourceId.isNullOrBlank()) "Instagram Reel $metadataSourceId" else "Instagram Reel"
+                }
+                "YouTube" -> "YouTube Audio"
+                else -> "Imported Audio"
+            }
         }
 
         metadataArtist = metadataArtist?.trim()?.replace(Regex("\\s+"), " ")?.removePrefix("@")
         if (metadataArtist.isNullOrBlank()) {
-            metadataArtist = "Unknown Artist"
+            metadataArtist = if (metadataPlatform == "Instagram") "Instagram Creator" else "Unknown Artist"
         }
 
         // 2. Download and Convert Audio (DOWNLOADING and CONVERTING stages)
         progressCallback(ImportJobStatus.DOWNLOADING, 0)
 
         val baseName = "import_${UUID.randomUUID()}"
-        val request = YoutubeDLRequest(normalizedUrl).apply {
+        val request = YoutubeDLRequest(canonicalUrl).apply {
             addOption("--force-ipv4")
             addOption("-f", "bestaudio/best")
             addOption("-x")
@@ -181,7 +198,7 @@ class YtDlpAudioExtractor @Inject constructor(
                 progressCallback(ImportJobStatus.SAVING, 90)
 
                 ExtractedMedia(
-                    sourceUrl = normalizedUrl,
+                    sourceUrl = canonicalUrl,
                     sourceId = metadataSourceId,
                     platform = metadataPlatform,
                     title = metadataTitle,

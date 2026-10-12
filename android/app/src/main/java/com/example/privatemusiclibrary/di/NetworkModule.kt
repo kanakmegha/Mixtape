@@ -24,12 +24,23 @@ import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
 
+class UnconfiguredBackendException(
+    message: String = "Staging backend URL is not configured. Network features are unavailable in this test build. Please configure mixtapeStagingBaseUrl."
+) : java.io.IOException(message)
+
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    // Using BuildConfig for environment-specific URLs
-    private val BASE_URL = com.example.privatemusiclibrary.BuildConfig.API_BASE_URL
+    val isInternalFlavor = com.example.privatemusiclibrary.BuildConfig.FLAVOR == "internal"
+
+    // Using BuildConfig for environment-specific URLs.
+    // For internal test builds, uses dedicated staging URL and never silently falls back to production.
+    private val BASE_URL = if (isInternalFlavor) {
+        com.example.privatemusiclibrary.BuildConfig.STAGING_API_BASE_URL
+    } else {
+        com.example.privatemusiclibrary.BuildConfig.API_BASE_URL
+    }
 
     @Provides
     @Singleton
@@ -137,6 +148,13 @@ object NetworkModule {
             }
         }
         builder.addInterceptor(loggingInterceptor)
+        val configInterceptor = Interceptor { chain ->
+            if (isInternalFlavor && !com.example.privatemusiclibrary.BuildConfig.IS_BACKEND_CONFIGURED) {
+                throw UnconfiguredBackendException()
+            }
+            chain.proceed(chain.request())
+        }
+        builder.addInterceptor(configInterceptor)
         return builder
             .addInterceptor(authInterceptor)
             .authenticator(authenticator)

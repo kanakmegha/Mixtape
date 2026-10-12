@@ -45,6 +45,21 @@ interface TrackDao {
 
     @Query("SELECT * FROM tracks")
     suspend fun getAll(): List<TrackEntity>
+
+    @Query("SELECT * FROM tracks WHERE trackKey = :trackKey LIMIT 1")
+    suspend fun getByTrackKey(trackKey: String): TrackEntity?
+
+    @Query("SELECT * FROM tracks WHERE trackKey IN (:trackKeys)")
+    suspend fun getByTrackKeys(trackKeys: List<String>): List<TrackEntity>
+
+    @Query("SELECT * FROM tracks WHERE isFavorite = 1")
+    suspend fun getFavorites(): List<TrackEntity>
+
+    @Query("UPDATE tracks SET isFavorite = :isFavorite, updatedAt = :updatedAt WHERE trackKey = :trackKey")
+    suspend fun updateFavoriteByTrackKey(trackKey: String, isFavorite: Boolean, updatedAt: Long): Int
+
+    @Query("UPDATE tracks SET trackKey = :trackKey WHERE id = :id")
+    suspend fun updateTrackKey(id: String, trackKey: String): Int
 }
 
 @Dao
@@ -79,8 +94,29 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE id = :id")
     fun observeById(id: String): Flow<PlaylistEntity?>
 
-    @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
+    @Query("SELECT * FROM playlists WHERE isDeleted = 0 ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PlaylistEntity>>
+
+    @Query("SELECT * FROM playlists")
+    suspend fun getAll(): List<PlaylistEntity>
+
+    @Query("UPDATE playlists SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun markDeleted(id: String, updatedAt: Long): Int
+}
+
+@Dao
+interface SyncTombstoneDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(tombstone: SyncTombstoneEntity): Long
+
+    @Query("SELECT * FROM sync_tombstones")
+    suspend fun getAll(): List<SyncTombstoneEntity>
+
+    @Query("DELETE FROM sync_tombstones WHERE entityType = :type AND entityId = :id")
+    suspend fun delete(type: String, id: String): Int
+
+    @Query("DELETE FROM sync_tombstones")
+    suspend fun clearAll(): Int
 }
 
 @Dao
@@ -93,6 +129,9 @@ interface PlaylistTrackDao {
 
     @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun removeTrack(playlistId: String, trackId: String): Int
+
+    @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId")
+    suspend fun removeAllForPlaylist(playlistId: String): Int
 
     @Query("UPDATE playlist_tracks SET position = :position WHERE playlistId = :playlistId AND trackId = :trackId")
     suspend fun updatePosition(playlistId: String, trackId: String, position: Int): Int

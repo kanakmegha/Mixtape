@@ -46,6 +46,8 @@ class PrivateMusicLibraryApp : Application(), Configuration.Provider {
         if (ytDlpInitialized) {
             ytDlpUpdateManager.initOrUpdateAsync()
         }
+
+        com.example.privatemusiclibrary.data.worker.SyncWorker.schedulePeriodic(this)
     }
 
     override val workManagerConfiguration: Configuration

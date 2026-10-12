@@ -87,6 +87,33 @@ class SharedUrlExtractorTest {
     }
 
     @Test
+    fun extractUrl_fromInstagramSharedTextWithCaption_extractsReelUrl() {
+        val input = "Watch this reel by @creator on Instagram https://www.instagram.com/reel/DCqQkQ3I123/?igsh=MW55ZGFuM291Ym1nbQ=="
+        assertEquals(
+            "https://www.instagram.com/reel/DCqQkQ3I123/?igsh=MW55ZGFuM291Ym1nbQ==",
+            SharedUrlExtractor.extractUrl(input)
+        )
+    }
+
+    @Test
+    fun extractUrl_fromInstagramReelWithTrailingPunctuation_cleansPunctuation() {
+        val input = "Check this out: https://www.instagram.com/reel/DCqQkQ3I123/."
+        assertEquals(
+            "https://www.instagram.com/reel/DCqQkQ3I123/",
+            SharedUrlExtractor.extractUrl(input)
+        )
+    }
+
+    @Test
+    fun extractUrl_prioritizesSupportedMediaUrlOverGenericLink() {
+        val input = "Shared via https://instagram.com/about. Watch reel: https://www.instagram.com/reel/DCqQkQ3I123/"
+        assertEquals(
+            "https://www.instagram.com/reel/DCqQkQ3I123/",
+            SharedUrlExtractor.extractUrl(input)
+        )
+    }
+
+    @Test
     fun extractUrl_withNoHttpUrl_returnsNull() {
         assertNull(SharedUrlExtractor.extractUrl("Just a friendly message between users."))
         assertNull(SharedUrlExtractor.extractUrl("ftp://files.example.com/audio.mp3"))

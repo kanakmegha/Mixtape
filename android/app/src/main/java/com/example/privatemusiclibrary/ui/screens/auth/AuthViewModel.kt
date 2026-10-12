@@ -39,6 +39,9 @@ class AuthViewModel @Inject constructor(
 
     init {
         checkSession()
+        if (com.example.privatemusiclibrary.BuildConfig.FLAVOR == "internal" && !com.example.privatemusiclibrary.BuildConfig.IS_BACKEND_CONFIGURED) {
+            _uiError.value = "Staging backend URL is not configured. Network features are unavailable in this test build."
+        }
     }
 
     fun checkSession() {
@@ -194,12 +197,14 @@ class AuthViewModel @Inject constructor(
         _uiError.value = msg
     }
 
-    private fun networkErrorMessage(e: Exception): String = when (e) {
-        is java.net.UnknownHostException -> "No internet connection. Sign-in and registration need internet."
-        is java.net.SocketTimeoutException -> "The server took too long to respond. Please try again."
-        is java.net.ConnectException -> "Couldn't reach the Mixtape server. Please try again."
-        is javax.net.ssl.SSLException -> "Secure connection failed. Check your network and try again."
-        is java.io.IOException -> "Network error. Please check your connection and try again."
+    private fun networkErrorMessage(e: Exception): String = when {
+        e is com.example.privatemusiclibrary.di.UnconfiguredBackendException || e.message?.contains("Staging backend URL is not configured") == true ->
+            "Staging backend URL is not configured. Network features are unavailable in this test build."
+        e is java.net.UnknownHostException -> "No internet connection. Sign-in and registration need internet."
+        e is java.net.SocketTimeoutException -> "The server took too long to respond. Please try again."
+        e is java.net.ConnectException -> "Couldn't reach the Mixtape server. Please try again."
+        e is javax.net.ssl.SSLException -> "Secure connection failed. Check your network and try again."
+        e is java.io.IOException -> "Network error. Please check your connection and try again."
         else -> "Something went wrong. Please try again."
     }
 }

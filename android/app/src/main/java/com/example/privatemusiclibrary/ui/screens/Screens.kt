@@ -302,7 +302,7 @@ fun LibraryScreen(
                     EmptyStateView(
                         icon = Icons.Default.LibraryMusic,
                         title = "No music in your library",
-                        description = "Add music files to your configured storage location or import tracks using online links.",
+                        description = "Add audio files to ${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH} or import tracks using online links.",
                         actionText = "Scan Storage",
                         onActionClick = { viewModel.scanLibrary() }
                     )
@@ -377,7 +377,48 @@ fun ImportScreen(
             onSharedUrlHandled()
         }
     }
+    val context = LocalContext.current
     val state by viewModel.uiState.collectAsState()
+
+    val customFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+        onResult = { uri: Uri? ->
+            if (uri != null) {
+                val takeFlags: Int = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                viewModel.onStorageLocationSelected(uri)
+            }
+        }
+    )
+
+    if (state.showStorageConfirmationDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissStorageConfirmationDialog() },
+            icon = { Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Save to ${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH}?") },
+            text = {
+                Text(
+                    "Mixtape will download audio directly to your device's public Music folder:\n\n${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH}\n\nYour music will be available in any media player. Confirm to proceed with downloading."
+                )
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.confirmStorageAndStartImport() }) {
+                    Text("Confirm & Download")
+                }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = { customFolderLauncher.launch(null) }) {
+                        Text("Custom Folder")
+                    }
+                    Spacer(modifier = Modifier.width(Dimens.spacingSm))
+                    TextButton(onClick = { viewModel.dismissStorageConfirmationDialog() }) {
+                        Text("Cancel")
+                    }
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -402,9 +443,9 @@ fun ImportScreen(
                 .padding(horizontal = Dimens.spacingXl),
             verticalArrangement = Arrangement.spacedBy(Dimens.spacingXl)
         ) {
-            if (!state.isStorageLoading && !state.isStorageConfigured) {
+            if (!state.isStorageLoading && !state.isStorageConfirmed) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                     shape = RoundedCornerShape(Dimens.radiusMd),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -416,39 +457,43 @@ fun ImportScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.ErrorOutline,
+                                imageVector = Icons.Default.Folder,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
+                                tint = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.width(Dimens.spacingMd))
                             Text(
-                                text = "Storage Directory Required",
-                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                text = "Automatic Music Storage",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         Text(
-                            text = if (!state.pendingSharedUrl.isNullOrBlank()) {
-                                "Your shared link is ready to import, but Mixtape needs a music folder first. Tap below to select a folder in Settings."
-                            } else {
-                                "Storage directory is not configured. Please select a folder in Settings to save your downloaded tracks."
-                            },
-                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            text = "Downloaded audio is stored in your device's Music folder under ${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH}. Tracks automatically appear in your media player.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium
                         )
-                        Button(
-                            onClick = onNavigateToSettings,
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.error,
-                                contentColor = MaterialTheme.colorScheme.onError
-                            ),
-                            shape = RoundedCornerShape(Dimens.radiusSm),
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(Dimens.spacingSm),
                             modifier = Modifier.padding(top = Dimens.spacingXs)
                         ) {
-                            Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(Dimens.spacingSm))
-                            Text("Configure Storage in Settings")
+                            Button(
+                                onClick = { viewModel.confirmStorage() },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                shape = RoundedCornerShape(Dimens.radiusSm)
+                            ) {
+                                Text("Use ${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH}")
+                            }
+                            OutlinedButton(
+                                onClick = { customFolderLauncher.launch(null) },
+                                shape = RoundedCornerShape(Dimens.radiusSm)
+                            ) {
+                                Text("Custom Folder")
+                            }
                         }
                     }
                 }
@@ -516,7 +561,7 @@ fun ImportScreen(
                                 .height(50.dp),
                             shape = RoundedCornerShape(Dimens.radiusMd),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            enabled = state.urlInput.isNotBlank() && state.isStorageConfigured && !state.isImporting
+                            enabled = state.urlInput.isNotBlank() && !state.isImporting
                         ) {
                             Icon(Icons.Default.Download, contentDescription = null)
                             Spacer(modifier = Modifier.width(Dimens.spacingSm))
@@ -744,27 +789,85 @@ fun SettingsScreen(
             item {
                 SettingsSectionHeader("Storage")
 
-                if (state.storageUri == null) {
+                if (state.storageUri == null || state.storageUri == "default") {
                     SettingsItem(
-                        icon = Icons.Default.FolderOff,
-                        title = "Storage not configured",
-                        subtitle = "Tap to select a local folder for downloaded audio",
+                        icon = Icons.Default.Folder,
+                        title = "Storage Location",
+                        subtitle = "${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH} (Default Android Music folder)",
+                        onClick = null
+                    )
+                    SettingsItem(
+                        icon = Icons.Default.FolderOpen,
+                        title = "Custom Folder (Advanced)",
+                        subtitle = "Select a specific SAF folder instead of default",
                         onClick = { documentTreeLauncher.launch(null) }
                     )
                 } else {
                     SettingsItem(
                         icon = Icons.Default.Folder,
-                        title = "Storage Location",
+                        title = "Custom Storage Location",
                         subtitle = state.storageUri,
                         onClick = { documentTreeLauncher.launch(null) }
                     )
                     SettingsItem(
-                        icon = Icons.Default.Storage,
-                        title = "Storage Used",
-                        subtitle = "${state.storageUsageBytes / (1024 * 1024)} MB (${state.trackCount} tracks)",
-                        onClick = null
+                        icon = Icons.Default.Refresh,
+                        title = "Reset Storage to Default",
+                        subtitle = "Revert to ${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH}",
+                        onClick = { viewModel.resetStorageToDefault() }
                     )
                 }
+
+                SettingsItem(
+                    icon = Icons.Default.Storage,
+                    title = "Storage Used",
+                    subtitle = "${state.storageUsageBytes / (1024 * 1024)} MB (${state.trackCount} tracks)",
+                    onClick = null
+                )
+
+                SettingsItem(
+                    icon = Icons.Default.Sync,
+                    title = "Scan Storage",
+                    subtitle = "Scan ${com.example.privatemusiclibrary.BuildConfig.AUDIO_RELATIVE_PATH} and synchronize library tracks",
+                    onClick = { viewModel.scanStorage() }
+                )
+            }
+
+            item {
+                SettingsSectionHeader("Cross-Device Synchronization")
+
+                val syncSubtitle = when (val s = state.syncStatus) {
+                    is com.example.privatemusiclibrary.domain.model.SyncStatus.Syncing -> "Synchronizing..."
+                    is com.example.privatemusiclibrary.domain.model.SyncStatus.Synced -> {
+                        if (state.lastSyncTime > 0) {
+                            val formatted = java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(state.lastSyncTime))
+                            "Synced (Last: $formatted)"
+                        } else "Synced"
+                    }
+                    is com.example.privatemusiclibrary.domain.model.SyncStatus.WaitingForNetwork -> "Waiting for network..."
+                    is com.example.privatemusiclibrary.domain.model.SyncStatus.PendingChanges -> "Pending changes (${s.count})"
+                    is com.example.privatemusiclibrary.domain.model.SyncStatus.Error -> "Sync failed: ${s.message}"
+                    is com.example.privatemusiclibrary.domain.model.SyncStatus.Idle -> {
+                        if (state.lastSyncTime > 0) {
+                            val formatted = java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(state.lastSyncTime))
+                            "Last synced: $formatted"
+                        } else "Ready to sync"
+                    }
+                }
+
+                SettingsItem(
+                    icon = Icons.Default.Cloud,
+                    title = "Sync Status",
+                    subtitle = syncSubtitle,
+                    onClick = null
+                )
+
+                SettingsItem(
+                    icon = Icons.Default.Sync,
+                    title = "Sync Now",
+                    subtitle = if (state.syncStatus is com.example.privatemusiclibrary.domain.model.SyncStatus.Syncing) "Syncing in progress..." else "Synchronize playlists and favorites with your account",
+                    onClick = { viewModel.syncNow() },
+                    enabled = state.syncStatus !is com.example.privatemusiclibrary.domain.model.SyncStatus.Syncing
+                )
             }
 
             item {

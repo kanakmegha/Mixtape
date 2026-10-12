@@ -81,11 +81,36 @@ var migrations = []string{
 	`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(50) NOT NULL DEFAULT 'user';
 	ALTER TABLE invitations ADD COLUMN IF NOT EXISTS used_by UUID REFERENCES users(id) ON DELETE SET NULL;
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_users_single_admin ON users (role) WHERE role = 'admin';`,
+	`ALTER TABLE playlists ADD COLUMN IF NOT EXISTS description TEXT;
+	ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS title VARCHAR(255);
+	ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS artist VARCHAR(255);
+	ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS album VARCHAR(255);
+	ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS duration INT;
+	ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+	ALTER TABLE playlist_tracks ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE;
+
+	CREATE TABLE IF NOT EXISTS favorites (
+		id UUID PRIMARY KEY,
+		user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+		track_key VARCHAR(255) NOT NULL,
+		title VARCHAR(255) NOT NULL,
+		artist VARCHAR(255),
+		album VARCHAR(255),
+		duration INT,
+		source VARCHAR(255),
+		is_favorite BOOLEAN NOT NULL DEFAULT TRUE,
+		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+		updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+		deleted_at TIMESTAMP WITH TIME ZONE,
+		UNIQUE (user_id, track_key)
+	);
+	CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id);
+	CREATE INDEX IF NOT EXISTS idx_favorites_track_key ON favorites(track_key);`,
 }
 
 func RunMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	log.Println("Running database migrations...")
-	
+
 	// Create migrations table if not exists
 	_, err := pool.Exec(ctx, migrations[0])
 	if err != nil {

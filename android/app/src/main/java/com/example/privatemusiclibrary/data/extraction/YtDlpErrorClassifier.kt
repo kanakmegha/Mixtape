@@ -29,11 +29,15 @@ object YtDlpErrorClassifier {
 
         return raw.contains("private video") ||
                 raw.contains("this video is private") ||
+                raw.contains("this account is private") ||
+                raw.contains("private account") ||
+                raw.contains("this post is private") ||
                 raw.contains("members-only") ||
                 raw.contains("only available to channel members") ||
                 raw.contains("sign in if you've been granted access") ||
                 raw.contains("sign in to confirm your age") ||
                 raw.contains("permission to view this") ||
+                raw.contains("requires login") ||
                 (raw.contains("login required") && !raw.contains("bot"))
     }
 
@@ -77,22 +81,32 @@ object YtDlpErrorClassifier {
             raw.contains("not a bot") || raw.contains("bot verification") ->
                 "YouTube is requiring bot verification for this request. Please try again shortly or check for app updates."
 
-            // 5. Genuine private / restricted / account-required content
+            // 6. Instagram specific: Private post or account
+            raw.contains("this account is private") || raw.contains("private account") ||
+            raw.contains("this post is private") ->
+                "This Instagram post or account is private and cannot be accessed without login."
+
+            // 7. Instagram specific: Photo or image post without video/audio
+            raw.contains("does not contain a video") || raw.contains("there is no video in this post") ||
+            raw.contains("post does not contain a video") ->
+                "This Instagram post contains only photos or images without an extractable audio stream."
+
+            // 8. Genuine private / restricted / account-required content
             isTrulyPrivateOrLoginRequired(raw) ->
                 "This content is private, age-restricted, or requires account authentication."
 
-            // 6. Content unavailable, removed, or geo-restricted
+            // 9. Content unavailable, removed, or geo-restricted
             raw.contains("video unavailable") || raw.contains("this video has been removed") ||
             raw.contains("does not exist") || raw.contains("not found") || raw.contains("http error 404") ||
             raw.contains("not made this video available in your country") || raw.contains("geo-restricted") ||
-            raw.contains("blocked in your country") ->
+            raw.contains("blocked in your country") || raw.contains("this post may have been deleted") ->
                 "This media is unavailable, removed, or geo-restricted in your region."
 
-            // 7. Metadata / JSON parsing failure (e.g. Jackson or extractor format changes)
+            // 10. Metadata / JSON parsing failure (e.g. Jackson or extractor format changes)
             raw.contains("unable to parse video information") || raw.contains("failed to fetch video information") ->
                 "Unable to parse media metadata from this link. The media format may have changed."
 
-            // 8. Unsupported URL or format
+            // 11. Unsupported URL or format
             raw.contains("unsupported url") || raw.contains("no suitable format") ||
             raw.contains("requested format not available") || raw.contains("no video formats found") ->
                 "This URL or format is not supported for audio extraction."

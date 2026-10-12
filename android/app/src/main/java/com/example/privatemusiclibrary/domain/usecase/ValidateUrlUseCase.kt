@@ -35,7 +35,13 @@ class ValidateUrlUseCase @Inject constructor(
 
         val supported = extractors.any { it.supports(url) }
         if (!supported) {
-            return ValidationResult.Invalid("This source isn't supported yet.")
+            val resolved = com.example.privatemusiclibrary.domain.extraction.SupportedSourceResolver.resolve(url)
+            val reason = if (resolved is com.example.privatemusiclibrary.domain.extraction.SourceResolutionResult.Unsupported) {
+                resolved.reason
+            } else {
+                "This source isn't supported yet."
+            }
+            return ValidationResult.Invalid(reason)
         }
 
         return ValidationResult.Valid
